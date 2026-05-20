@@ -1,7 +1,7 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo.svg">
-    <img src="https://github.com/divisionseven/brandbox/raw/main/docs/assets/brand/logo.png" width="450" alt="Brandbox Logo" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/divisionseven/brandbox/raw/main/docs/assets/brand/brandbox-social-preview.png">
+    <img src="https://github.com/divisionseven/brandbox/raw/main/docs/assets/brand/brandbox-social-preview.png" width="700" alt="Brandbox Logo" />
   </picture>
 
 # BrandBox

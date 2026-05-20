@@ -27,6 +27,14 @@ from brandbox.logos import (
     root_domain,
 )
 
+# ── cairosvg availability check ───────────────────────────────────────────
+try:
+    import cairosvg  # noqa: F401 — import is for availability check only
+
+    CAIRO_AVAILABLE = True
+except (ImportError, OSError):
+    CAIRO_AVAILABLE = False
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -643,6 +651,7 @@ class TestFetchSvgLogo:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(not CAIRO_AVAILABLE, reason="cairosvg/system cairo not available")
 class TestSvgTransparency:
     """Tests that SVG-originated PNGs have real alpha transparency."""
 
@@ -652,10 +661,7 @@ class TestSvgTransparency:
 
     def test_svg_originated_png_has_real_alpha(self) -> None:
         """SVG→PNG rasterization produces RGBA with transparent pixels."""
-        try:
-            import cairosvg
-        except ImportError:
-            pytest.skip("cairosvg not installed")
+        import cairosvg
 
         png_bytes = cairosvg.svg2png(bytestring=self.SVG_RED_CIRCLE)
         assert png_bytes is not None
@@ -666,10 +672,7 @@ class TestSvgTransparency:
 
     def test_svg_png_processed_through_logo_to_png(self) -> None:
         """SVG→PNG → logo_to_png produces valid 200×200 RGBA output."""
-        try:
-            import cairosvg
-        except ImportError:
-            pytest.skip("cairosvg not installed")
+        import cairosvg
 
         from brandbox.logos import logo_to_png
 

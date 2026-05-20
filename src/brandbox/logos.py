@@ -222,7 +222,7 @@ def _fetch_svg_logo(domain: str) -> tuple[bytes, str] | tuple[None, None]:
                 # Rasterize SVG to PNG via cairosvg
                 try:
                     import cairosvg
-                except ImportError:
+                except (ImportError, OSError):
                     return None, None  # SVG unavailable → fall through to raster
                 raw_png = cairosvg.svg2png(bytestring=content, output_width=CANVAS_SIZE * 2)
                 if raw_png and len(bytes(raw_png)) > 50:
@@ -245,7 +245,7 @@ def _fetch_svg_logo(domain: str) -> tuple[bytes, str] | tuple[None, None]:
                 if content.startswith((b"<svg", b"<?xml", b"<?")):
                     try:
                         import cairosvg
-                    except ImportError:
+                    except (ImportError, OSError):
                         return None, None
                     raw_png = cairosvg.svg2png(bytestring=content, output_width=CANVAS_SIZE * 2)
                     if raw_png and len(bytes(raw_png)) > 50:

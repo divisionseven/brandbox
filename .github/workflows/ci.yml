@@ -94,6 +94,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
 
+      - name: Install system dependencies (cairo for SVG rendering)
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update && sudo apt-get install -y libcairo2-dev
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            brew install cairo
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            if command -v vcpkg &> /dev/null; then
+              VCPKG_CMD="vcpkg"
+            elif [ -n "$VCPKG_ROOT" ] && [ -f "$VCPKG_ROOT/vcpkg" ]; then
+              VCPKG_CMD="$VCPKG_ROOT/vcpkg"
+            else
+              echo "::warning::vcpkg not found — cairo may not be available"
+              VCPKG_CMD=""
+            fi
+            if [ -n "$VCPKG_CMD" ]; then
+              $VCPKG_CMD install cairo --triplet x64-windows
+              echo "CAIROCFFI_DLL_DIRECTORIES=C:\vcpkg\installed\x64-windows\bin" >> $GITHUB_ENV
+            fi
+          fi
+        shell: bash
+
       - name: Install dependencies
         run: |
           pip install --upgrade pip

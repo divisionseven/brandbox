@@ -32,9 +32,9 @@ concurrency:
 env:
   PROJECT_NAME: "brandbox"
   REPO: "${{ github.repository }}"
-  LOGO_LIGHT: "https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/brand/logo.svg"
-  LOGO_DARK: "https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/brand/logo.svg"
-  LOGO_WIDTH: "400"
+  LOGO_LIGHT: "https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/brand/brandbox-social-preview.png"
+  LOGO_DARK: "https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/brand/brandbox-social-preview.png"
+  LOGO_WIDTH: "500"
 
 # ──────────────────────────────────────────────────────────────────────────────
 jobs:
