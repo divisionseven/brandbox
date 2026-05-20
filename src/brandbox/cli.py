@@ -12,6 +12,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from platformdirs import user_data_dir
 from rich import box
@@ -92,7 +93,7 @@ def _print_banner() -> None:
     console.print()
 
 
-def _print_summary(counts: dict, label: str = "") -> None:
+def _print_summary(counts: dict[str, Any], label: str = "") -> None:
     rows = [
         ("set", "green", "✓", "Logos set"),
         ("processed", "dim", "·", "Already processed"),
@@ -129,7 +130,7 @@ def _print_summary(counts: dict, label: str = "") -> None:
         console.print(table)
 
 
-def _display_auth_prompt(provider_name: str, auth_info: dict) -> None:
+def _display_auth_prompt(provider_name: str, auth_info: dict[str, Any]) -> None:
     """Render provider-specific sign-in instructions between start and finish auth."""
     kind = auth_info.get("type")
 
@@ -176,11 +177,11 @@ def _process_account(
     account: Account,
     idx: int,
     total: int,
-    app_state: dict,
+    app_state: dict[str, Any],
     dry_run: bool = False,
     overwrite: bool = False,
     scan_inbox: bool = False,
-) -> dict:
+) -> dict[str, Any]:
 
     provider_label = PROVIDER_LABELS.get(provider.name, provider.name)
     console.print()

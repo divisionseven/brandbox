@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import requests
 from google.auth.transport.requests import Request
@@ -53,18 +54,20 @@ class GoogleProvider(Provider):
         return self._token_dir / f"google_{safe}.json"
 
     def _save_token(self, username: str, creds: Credentials) -> None:
-        data = {"username": username, "credentials": json.loads(creds.to_json())}
+        data = {"username": username, "credentials": json.loads(creds.to_json())}  # type: ignore[no-untyped-call]
         self._token_path(username).write_text(json.dumps(data, indent=2))
 
     def _load_creds(self, username: str) -> Credentials:
         data = json.loads(self._token_path(username).read_text())
-        creds = Credentials.from_authorized_user_info(data["credentials"], SCOPES)
+        creds_data: dict[str, Any] = data["credentials"]
+        creds_inner = Credentials.from_authorized_user_info(creds_data, SCOPES)  # type: ignore[no-untyped-call]
+        creds = cast(Credentials, creds_inner)
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            creds.refresh(Request())  # type: ignore[no-untyped-call]
             self._save_token(username, creds)
         return creds
 
-    def _headers(self, token: str) -> dict:
+    def _headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
     def _people_get_paged(
@@ -72,9 +75,9 @@ class GoogleProvider(Provider):
         token: str,
         url: str,
         items_key: str,
-        params: dict | None = None,
-    ) -> list[dict]:
-        items: list[dict] = []
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
         page_token: str | None = None
         while True:
             p = {**(params or {}), "pageSize": 1000}
@@ -90,7 +93,7 @@ class GoogleProvider(Provider):
         return items
 
     @staticmethod
-    def _parse_contact(person: dict) -> Contact:
+    def _parse_contact(person: dict[str, Any]) -> Contact:
         resource_name = person.get("resourceName", "")
         display_name = ""
         names = person.get("names", [])
@@ -104,7 +107,7 @@ class GoogleProvider(Provider):
 
     # Auth
 
-    def start_auth(self) -> dict:
+    def start_auth(self) -> dict[str, Any]:
         if not self._creds_file.exists():
             raise FileNotFoundError(
                 f"Google credentials file not found: {self._creds_file}\n"
@@ -112,7 +115,7 @@ class GoogleProvider(Provider):
             )
         return {"type": "browser"}
 
-    def finish_auth(self, flow: dict) -> str:  # noqa: ARG002
+    def finish_auth(self, flow: dict[str, Any]) -> str:  # noqa: ARG002
         """Opens a browser for OAuth consent and blocks until complete."""
         auth_flow = InstalledAppFlow.from_client_secrets_file(str(self._creds_file), SCOPES)
         creds = auth_flow.run_local_server(port=0, open_browser=True)
@@ -125,7 +128,8 @@ class GoogleProvider(Provider):
             timeout=10,
         )
         resp.raise_for_status()
-        username = resp.json().get("email", "unknown@google.com").lower()
+        email_val: Any = resp.json().get("email", "unknown@google.com")
+        username = str(email_val).lower()
 
         self._save_token(username, creds)
         return username
@@ -149,7 +153,7 @@ class GoogleProvider(Provider):
                 f"No token found for {account.username}. "
                 "Re-run brandbox --add-account --provider google."
             )
-        return self._load_creds(account.username).token
+        return cast(str, self._load_creds(account.username).token)
 
     # Contacts
 
@@ -192,7 +196,7 @@ class GoogleProvider(Provider):
             timeout=20,
         )
         if resp.status_code in (200, 201):
-            return resp.json().get("resourceName")
+            return cast(str | None, resp.json().get("resourceName"))
         return None
 
     def set_contact_photo(self, token: str, contact_id: str, png: bytes) -> bool:

@@ -48,11 +48,21 @@ brandbox = "brandbox.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/brandbox"]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-mock>=3.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
 # uv
 
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
     "pytest-mock>=3.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
@@ -74,3 +84,26 @@ ignore = ["E501"]
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+
+# pytest
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+    "unit: Unit tests (fast, isolated)",
+    "integration: Integration tests (require network or external services)",
+    "slow: Tests that take longer than normal",
+]
+
+# coverage
+
+[tool.coverage.run]
+source = ["brandbox"]
+branch = true
+omit = ["**/__main__.py"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true

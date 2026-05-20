@@ -12,17 +12,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 
-def load(state_file: Path) -> dict:
+def load(state_file: Path) -> dict[str, Any]:
     if state_file.exists():
         try:
-            return json.loads(state_file.read_text())
+            return cast(dict[str, Any], json.loads(state_file.read_text()))
         except (json.JSONDecodeError, OSError):
             return {}
     return {}
 
 
-def save(state_file: Path, state: dict) -> None:
+def save(state_file: Path, state: dict[str, Any]) -> None:
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(json.dumps(state, indent=2))

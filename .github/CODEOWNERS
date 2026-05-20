@@ -1,0 +1,10 @@
+# Code ownership - require review on important changes
+# Default review required
+* @divisionseven
+
+# CI/CD changes require review
+.github/ @divisionseven
+
+# Security-related changes require review
+*ci @divisionseven
+security* @divisionseven

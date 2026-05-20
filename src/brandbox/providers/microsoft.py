@@ -8,6 +8,7 @@ Contacts & photos: Microsoft Graph API.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import msal
 import requests
@@ -47,11 +48,11 @@ class MicrosoftProvider(Provider):
             token_cache=self._cache,
         )
 
-    def _headers(self, token: str) -> dict:
+    def _headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
-    def _get_paged(self, token: str, url: str) -> list[dict]:
-        items: list[dict] = []
+    def _get_paged(self, token: str, url: str) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
         while url:
             resp = requests.get(url, headers=self._headers(token), timeout=30)
             resp.raise_for_status()
@@ -62,7 +63,7 @@ class MicrosoftProvider(Provider):
 
     # Auth
 
-    def start_auth(self) -> dict:
+    def start_auth(self) -> dict[str, Any]:
         flow = self._app().initiate_device_flow(scopes=SCOPES)
         if "user_code" not in flow:
             raise RuntimeError(f"Device flow failed: {flow}")
@@ -86,17 +87,15 @@ class MicrosoftProvider(Provider):
             "_flow": flow,  # MSAL flow state — passed back into finish_auth
         }
 
-    def finish_auth(self, flow: dict) -> str:
+    def finish_auth(self, flow: dict[str, Any]) -> str:
         result = self._app().acquire_token_by_device_flow(flow["_flow"])
         if "access_token" not in result:
             raise RuntimeError(f"Authentication failed: {result.get('error_description', result)}")
         self._save_cache()
-        accounts = self._app().get_accounts()
-        return (
-            accounts[-1]["username"]
-            if accounts
-            else result.get("id_token_claims", {}).get("preferred_username", "unknown")
-        )
+        accounts_list = self._app().get_accounts()
+        if accounts_list:
+            return cast(str, accounts_list[-1]["username"])
+        return cast(str, result.get("id_token_claims", {}).get("preferred_username", "unknown"))
 
     # Account management
 
@@ -121,7 +120,7 @@ class MicrosoftProvider(Provider):
                 "Re-run brandbox --add-account to re-authenticate."
             )
         self._save_cache()
-        return result["access_token"]
+        return cast(str, result["access_token"])
 
     # Contacts
 
@@ -148,7 +147,7 @@ class MicrosoftProvider(Provider):
         for msg in items:
             try:
                 emails.add(msg["from"]["emailAddress"]["address"].lower().strip())
-            except (KeyError, TypeError):
+            except (KeyError, TypeError, AttributeError):
                 pass
         return emails
 
@@ -163,7 +162,7 @@ class MicrosoftProvider(Provider):
             timeout=20,
         )
         if resp.status_code in (200, 201):
-            return resp.json().get("id")
+            return cast(str | None, resp.json().get("id"))
         return None
 
     def set_contact_photo(self, token: str, contact_id: str, png: bytes) -> bool:

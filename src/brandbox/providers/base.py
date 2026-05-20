@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -43,7 +44,7 @@ class Provider(ABC):
     # Auth
 
     @abstractmethod
-    def start_auth(self) -> dict:
+    def start_auth(self) -> dict[str, Any]:
         """
         Begin the authentication flow.
 
@@ -54,7 +55,7 @@ class Provider(ABC):
         """
 
     @abstractmethod
-    def finish_auth(self, flow: dict) -> str:
+    def finish_auth(self, flow: dict[str, Any]) -> str:
         """
         Complete the auth flow (may block waiting for user). Returns the username."""
 
