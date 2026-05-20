@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.whl
+
+# uv / venv
+.venv/
+venv/
+.uv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Type checking
+.mypy_cache/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# BrandBox Runtime Data
+# (these live in ~/Library/Application Support/brandbox — not in the repo)
+# If you're running from source for development, these may appear locally:
+token_cache.json
+state.json
+cache/

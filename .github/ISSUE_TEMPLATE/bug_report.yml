@@ -1,0 +1,46 @@
+name: Bug Report
+description: Something isn't working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to file a bug report.
+
+  - type: input
+    id: version
+    attributes:
+      label: brandbox version
+      placeholder: "e.g. 0.1.0 (run: brandbox --version)"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.12.3 (run: python --version)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "e.g. macOS 15.4, Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug. Include the full command you ran and the full terminal output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
