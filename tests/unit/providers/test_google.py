@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 from google.oauth2.credentials import Credentials as RealCredentials
+from pytest_mock import MockerFixture
 
 from brandbox.providers.base import Account
 from brandbox.providers.google import (
@@ -25,14 +26,14 @@ class TestGoogleProvider:
     # ── Fixtures ─────────────────────────────────────────────────────
 
     @pytest.fixture
-    def mock_flow_cls(self, mocker):
+    def mock_flow_cls(self, mocker: MockerFixture) -> MagicMock:
         """Mock the InstalledAppFlow class to avoid browser OAuth flow."""
         return mocker.patch("brandbox.providers.google.InstalledAppFlow")
 
     @pytest.fixture
-    def mock_credentials_instance(self, mocker):
+    def mock_credentials_instance(self, mocker: MockerFixture) -> MagicMock:
         """Create a MagicMock specced to RealCredentials for isinstance checks."""
-        creds = mocker.MagicMock(spec=RealCredentials)
+        creds: MagicMock = mocker.MagicMock(spec=RealCredentials)
         creds.token = "fake-token"
         creds.refresh_token = "fake-refresh"
         creds.expired = False
@@ -130,7 +131,9 @@ class TestGoogleProvider:
         assert "credentials" in data
         assert data["credentials"]["token"] == "fake-token"
 
-    def test_load_creds_returns_credentials(self, mocker, token_dir: Path, tmp_path: Path) -> None:
+    def test_load_creds_returns_credentials(
+        self, mocker: MockerFixture, token_dir: Path, tmp_path: Path
+    ) -> None:
         """_load_creds reads token file and returns a Credentials object."""
         # Arrange
         creds_file = tmp_path / "creds.json"
@@ -179,7 +182,7 @@ class TestGoogleProvider:
             provider._load_creds("nonexistent@gmail.com")
 
     def test_load_creds_refreshes_when_expired(
-        self, mocker, token_dir: Path, tmp_path: Path
+        self, mocker: MockerFixture, token_dir: Path, tmp_path: Path
     ) -> None:
         """_load_creds refreshes credentials when expired and has refresh_token."""
         # Arrange
@@ -229,7 +232,7 @@ class TestGoogleProvider:
         assert updated_data["username"] == "user@gmail.com"
 
     def test_load_creds_skips_refresh_when_not_expired(
-        self, mocker, token_dir: Path, tmp_path: Path
+        self, mocker: MockerFixture, token_dir: Path, tmp_path: Path
     ) -> None:
         """_load_creds does not refresh when credentials are still valid."""
         # Arrange
@@ -268,7 +271,7 @@ class TestGoogleProvider:
         mock_creds.refresh.assert_not_called()
 
     def test_load_creds_skips_refresh_when_no_refresh_token(
-        self, mocker, token_dir: Path, tmp_path: Path
+        self, mocker: MockerFixture, token_dir: Path, tmp_path: Path
     ) -> None:
         """_load_creds does not refresh when refresh_token is missing."""
         # Arrange
@@ -316,7 +319,9 @@ class TestGoogleProvider:
 
     # ── People API paging: _people_get_paged ─────────────────────────
 
-    def test_people_get_paged_single_page(self, mocker, provider: GoogleProvider) -> None:
+    def test_people_get_paged_single_page(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """_people_get_paged returns all items from a single page."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -334,7 +339,7 @@ class TestGoogleProvider:
         assert items == [{"resourceName": "people/c1"}]
 
     def test_people_get_paged_follows_next_page_token(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """_people_get_paged follows nextPageToken for multi-page results."""
         # Arrange
@@ -363,7 +368,7 @@ class TestGoogleProvider:
         assert mock_get.call_args_list[1][1]["params"]["pageToken"] == "token2"
 
     def test_people_get_paged_always_has_page_size_1000(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """_people_get_paged always includes pageSize=1000 in params."""
         # Arrange
@@ -386,7 +391,9 @@ class TestGoogleProvider:
         assert params["pageSize"] == 1000
         assert params["readMask"] == "names"
 
-    def test_people_get_paged_handles_missing_key(self, mocker, provider: GoogleProvider) -> None:
+    def test_people_get_paged_handles_missing_key(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """_people_get_paged returns [] when items_key is missing from response."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -399,7 +406,9 @@ class TestGoogleProvider:
         # Assert
         assert items == []
 
-    def test_people_get_paged_raises_on_http_error(self, mocker, provider: GoogleProvider) -> None:
+    def test_people_get_paged_raises_on_http_error(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """_people_get_paged raises when HTTP request fails."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -548,7 +557,11 @@ class TestGoogleProvider:
     # ── Auth: finish_auth ────────────────────────────────────────────
 
     def test_finish_auth_runs_flow_and_returns_email(
-        self, mocker, mock_flow_cls, mock_credentials_instance, provider: GoogleProvider
+        self,
+        mocker: MockerFixture,
+        mock_flow_cls: MagicMock,
+        mock_credentials_instance: MagicMock,
+        provider: GoogleProvider,
     ) -> None:
         """finish_auth runs OAuth flow, fetches email, saves token, returns email."""
         # Arrange
@@ -579,7 +592,11 @@ class TestGoogleProvider:
         assert saved["username"] == "user@gmail.com"
 
     def test_finish_auth_falls_back_to_unknown_email(
-        self, mocker, mock_flow_cls, mock_credentials_instance, provider: GoogleProvider
+        self,
+        mocker: MockerFixture,
+        mock_flow_cls: MagicMock,
+        mock_credentials_instance: MagicMock,
+        provider: GoogleProvider,
     ) -> None:
         """finish_auth uses 'unknown@google.com' when email missing from userinfo."""
         # Arrange
@@ -597,7 +614,11 @@ class TestGoogleProvider:
         assert result == "unknown@google.com"
 
     def test_finish_auth_raises_when_userinfo_fails(
-        self, mocker, mock_flow_cls, mock_credentials_instance, provider: GoogleProvider
+        self,
+        mocker: MockerFixture,
+        mock_flow_cls: MagicMock,
+        mock_credentials_instance: MagicMock,
+        provider: GoogleProvider,
     ) -> None:
         """finish_auth raises when userinfo API request fails."""
         # Arrange
@@ -699,7 +720,9 @@ class TestGoogleProvider:
         assert accounts[0].username == "a_first@test.com"
         assert accounts[1].username == "z_first@test.com"
 
-    def test_get_token_returns_token_string(self, mocker, token_dir: Path, tmp_path: Path) -> None:
+    def test_get_token_returns_token_string(
+        self, mocker: MockerFixture, token_dir: Path, tmp_path: Path
+    ) -> None:
         """get_token returns token string for an existing account."""
         # Arrange
         creds_file = tmp_path / "creds.json"
@@ -737,7 +760,9 @@ class TestGoogleProvider:
         # Assert
         assert token == "stored-token"
 
-    def test_get_token_refreshes_if_needed(self, mocker, token_dir: Path, tmp_path: Path) -> None:
+    def test_get_token_refreshes_if_needed(
+        self, mocker: MockerFixture, token_dir: Path, tmp_path: Path
+    ) -> None:
         """get_token refreshes expired credentials and returns the token."""
         # Arrange
         creds_file = tmp_path / "creds.json"
@@ -795,7 +820,9 @@ class TestGoogleProvider:
 
     # ── Contacts: get_contacts ───────────────────────────────────────
 
-    def test_get_contacts_returns_mapped_contacts(self, mocker, provider: GoogleProvider) -> None:
+    def test_get_contacts_returns_mapped_contacts(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """get_contacts returns Contact objects from People API connections."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -830,7 +857,7 @@ class TestGoogleProvider:
         assert contacts[1].emails == ["bob@work.com"]
 
     def test_get_contacts_filters_connections_without_email(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """get_contacts excludes connections that have no emailAddresses."""
         # Arrange
@@ -858,7 +885,9 @@ class TestGoogleProvider:
         assert len(contacts) == 1
         assert contacts[0].id == "people/c1"
 
-    def test_get_contacts_empty_connections(self, mocker, provider: GoogleProvider) -> None:
+    def test_get_contacts_empty_connections(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """get_contacts returns [] when connections list is empty."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -871,7 +900,9 @@ class TestGoogleProvider:
         # Assert
         assert contacts == []
 
-    def test_get_contacts_uses_correct_endpoint(self, mocker, provider: GoogleProvider) -> None:
+    def test_get_contacts_uses_correct_endpoint(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """get_contacts hits the correct People API URL and params."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -888,7 +919,9 @@ class TestGoogleProvider:
 
     # ── Recent senders: get_recent_senders ───────────────────────────
 
-    def test_get_recent_senders_returns_emails(self, mocker, provider: GoogleProvider) -> None:
+    def test_get_recent_senders_returns_emails(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """get_recent_senders returns email addresses from otherContacts."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -914,7 +947,9 @@ class TestGoogleProvider:
         # Assert
         assert senders == {"sender@co.com", "other@work.com"}
 
-    def test_get_recent_senders_deduplicates(self, mocker, provider: GoogleProvider) -> None:
+    def test_get_recent_senders_deduplicates(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """get_recent_senders returns unique email addresses."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -933,7 +968,7 @@ class TestGoogleProvider:
         assert senders == {"same@co.com"}
 
     def test_get_recent_senders_handles_missing_email_addresses(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """get_recent_senders skips persons with no emailAddresses."""
         # Arrange
@@ -953,7 +988,7 @@ class TestGoogleProvider:
         assert senders == {"has@co.com"}
 
     def test_get_recent_senders_skips_email_without_value(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """get_recent_senders skips emailAddresses entries missing value."""
         # Arrange
@@ -976,7 +1011,9 @@ class TestGoogleProvider:
         # Assert
         assert senders == {"good@co.com"}
 
-    def test_get_recent_senders_empty_response(self, mocker, provider: GoogleProvider) -> None:
+    def test_get_recent_senders_empty_response(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """get_recent_senders returns empty set when no otherContacts."""
         # Arrange
         mock_get = mocker.patch("brandbox.providers.google.requests.get")
@@ -990,7 +1027,7 @@ class TestGoogleProvider:
         assert senders == set()
 
     def test_get_recent_senders_uses_correct_endpoint(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """get_recent_senders hits the correct People API otherContacts URL."""
         # Arrange
@@ -1009,7 +1046,7 @@ class TestGoogleProvider:
     # ── Contact CRUD: create_contact, set_contact_photo ──────────────
 
     def test_create_contact_returns_resource_name_on_201(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """create_contact returns resourceName when API returns 201."""
         # Arrange
@@ -1037,7 +1074,7 @@ class TestGoogleProvider:
         )
 
     def test_create_contact_returns_resource_name_on_200(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """create_contact returns resourceName when API returns 200."""
         # Arrange
@@ -1051,7 +1088,9 @@ class TestGoogleProvider:
         # Assert
         assert result == "people/cUpdated"
 
-    def test_create_contact_returns_none_on_failure(self, mocker, provider: GoogleProvider) -> None:
+    def test_create_contact_returns_none_on_failure(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """create_contact returns None when API returns non-2xx."""
         # Arrange
         mock_post = mocker.patch("brandbox.providers.google.requests.post")
@@ -1064,7 +1103,7 @@ class TestGoogleProvider:
         assert result is None
 
     def test_create_contact_returns_none_when_resource_name_missing(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """create_contact returns None when success response lacks resourceName."""
         # Arrange
@@ -1078,7 +1117,9 @@ class TestGoogleProvider:
         # Assert
         assert result is None
 
-    def test_set_contact_photo_returns_true_on_200(self, mocker, provider: GoogleProvider) -> None:
+    def test_set_contact_photo_returns_true_on_200(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """set_contact_photo returns True when API returns 200."""
         # Arrange
         import base64
@@ -1107,7 +1148,7 @@ class TestGoogleProvider:
         )
 
     def test_set_contact_photo_returns_false_on_non_200(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """set_contact_photo returns False when API returns non-200."""
         # Arrange
@@ -1120,7 +1161,9 @@ class TestGoogleProvider:
         # Assert
         assert result is False
 
-    def test_set_contact_photo_returns_false_on_4xx(self, mocker, provider: GoogleProvider) -> None:
+    def test_set_contact_photo_returns_false_on_4xx(
+        self, mocker: MockerFixture, provider: GoogleProvider
+    ) -> None:
         """set_contact_photo returns False when API returns 4xx."""
         # Arrange
         mock_post = mocker.patch("brandbox.providers.google.requests.post")
@@ -1133,7 +1176,7 @@ class TestGoogleProvider:
         assert result is False
 
     def test_set_contact_photo_sends_base64_encoded_bytes(
-        self, mocker, provider: GoogleProvider
+        self, mocker: MockerFixture, provider: GoogleProvider
     ) -> None:
         """set_contact_photo sends base64-encoded PNG in request body."""
         # Arrange

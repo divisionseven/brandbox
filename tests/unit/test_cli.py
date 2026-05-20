@@ -24,7 +24,18 @@ from brandbox.cli import (
     _process_account,
     main,
 )
+from brandbox.logos import LogoSrc
 from brandbox.providers.base import Account, Contact
+
+
+def _fake_logo(
+    png_bytes: bytes = b"fake-png",
+    source: str = "test",
+    dims: str = "100x100",
+) -> LogoSrc:
+    """Create a fake LogoSrc for mocking get_logo return values."""
+    return LogoSrc(png=png_bytes, source=source, dims=dims)
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  _ms_client_id
@@ -301,7 +312,7 @@ class TestProcessAccountHappyPath:
         mocker.patch("brandbox.cli.logos.root_domain", side_effect=_domain_side_effect)
         mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
         mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
-        mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
         mocker.patch("brandbox.cli.state.save")
         mocker.patch("brandbox.cli.time.sleep")
 
@@ -435,7 +446,7 @@ class TestProcessAccountEdgeCases:
         mocker.patch("brandbox.cli.logos.root_domain", side_effect=_domain_side_effect)
         mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
         mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
-        mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
         mocker.patch("brandbox.cli.state.save")
         mocker.patch("brandbox.cli.time.sleep")
 
@@ -673,7 +684,7 @@ class TestProcessAccountDryRun:
         mocker.patch("brandbox.cli.logos.root_domain", side_effect=_domain_side_effect)
         mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
         mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
-        mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
         mocker.patch("brandbox.cli.state.save")
         mocker.patch("brandbox.cli.time.sleep")
 
@@ -824,7 +835,7 @@ class TestProcessAccountInboxScan:
         mocker.patch("brandbox.cli.logos.root_domain", side_effect=_inbox_domain)
         mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
         mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
-        mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
         mocker.patch("brandbox.cli.state.save")
         mocker.patch("brandbox.cli.time.sleep")
 
@@ -842,7 +853,7 @@ class TestProcessAccountInboxScan:
         contact_count_before = len(mock_provider.contacts)
 
         # Act
-        _process_account(
+        counts = _process_account(  # ← capture return value
             provider=mock_provider,
             token="test-token",
             account=sample_account,
@@ -858,6 +869,8 @@ class TestProcessAccountInboxScan:
         # The sender "newguy@startup.io" was created with a logo attached
         created_emails = {e for c in mock_provider.contacts for e in c.emails}
         assert "newguy@startup.io" in created_emails
+        # Verify counts["set"] was properly updated (Bug 3 regression check)
+        assert counts["set"] >= 1
 
     def test_new_sender_with_personal_domain__skipped(
         self,
@@ -878,7 +891,7 @@ class TestProcessAccountInboxScan:
         contact_count_before = len(mock_provider.contacts)
 
         # Act
-        _process_account(
+        counts = _process_account(
             provider=mock_provider,
             token="test-token",
             account=sample_account,
@@ -890,6 +903,7 @@ class TestProcessAccountInboxScan:
 
         # Assert — no contact created for personal domain
         assert len(mock_provider.contacts) == contact_count_before
+        assert counts["domain"] == 1
 
     def test_new_sender_with_no_logo__skipped(
         self,
@@ -907,7 +921,7 @@ class TestProcessAccountInboxScan:
         contact_count_before = len(mock_provider.contacts)
 
         # Act
-        _process_account(
+        counts = _process_account(
             provider=mock_provider,
             token="test-token",
             account=sample_account,
@@ -919,6 +933,7 @@ class TestProcessAccountInboxScan:
 
         # Assert — no contact created when logo is None
         assert len(mock_provider.contacts) == contact_count_before
+        assert counts["no_logo"] >= 1
 
     def test_no_new_senders__nothing_created(
         self,
@@ -985,9 +1000,6 @@ class TestProcessAccountInboxScan:
     ) -> None:
         """When set_contact_photo fails in inbox scan, the contact is created
         but not recorded in app_state.
-
-        This covers branch 230→234 (:cls:`cli.py`) — the fall-through when
-        ``set_contact_photo`` returns ``False`` during inbox scanning.
         """
         # Arrange
         mock_provider.fail_set_photo = True
@@ -997,7 +1009,7 @@ class TestProcessAccountInboxScan:
         contact_count_before = len(mock_provider.contacts)
 
         # Act
-        _process_account(
+        counts = _process_account(  # ← capture return value
             provider=mock_provider,
             token="test-token",
             account=sample_account,
@@ -1015,6 +1027,175 @@ class TestProcessAccountInboxScan:
         new_contact_ids = {c.id for c in mock_provider.contacts} - {"c1"}
         for cid in new_contact_ids:
             assert cid not in account_state
+        # Verify failed count is incremented
+        assert counts["failed"] >= 1
+
+    def test_scan_inbox_with_zero_contacts(
+        self,
+        mock_provider: Any,
+        sample_account: Account,
+    ) -> None:
+        """--scan-inbox with zero existing contacts: no 0/0 progress bar, contacts created."""
+        # Arrange
+        mock_provider.contacts = []  # zero contacts
+        mock_provider.senders = {"newguy@startup.io"}
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            scan_inbox=True,
+        )
+
+        # Assert
+        # 1. Contact was created from inbox scan
+        assert len(mock_provider.contacts) == 1
+        assert mock_provider.contacts[0].emails == ["newguy@startup.io"]
+        # 2. Summary shows the created contact
+        assert counts["set"] == 1
+        assert counts["domain"] == 0
+        assert counts["no_logo"] == 0
+        # 3. No 0/0 progress bar was shown (no crash) — verified by test completing cleanly
+
+    def test_scan_inbox_zero_contacts_all_personal_domains(
+        self, mock_provider: Any, mocker: MockerFixture, sample_account: Account
+    ) -> None:
+        """Zero contacts + scan_inbox=True + all senders have personal domains.
+
+        Regression: verifies no crash and counters are correct when no contacts
+        are created during the scan loop due to personal domain filtering.
+        """
+        mock_provider.contacts = []
+        mock_provider.senders = {"person@gmail.com"}
+
+        # Override class fixture: mark gmail.com as a personal domain
+        mocker.patch(
+            "brandbox.cli.logos.is_personal_domain",
+            side_effect=lambda d: d == "gmail.com",
+        )
+
+        result = _process_account(
+            provider=mock_provider,
+            token="mock-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state={},
+            scan_inbox=True,
+        )
+
+        assert result["domain"] >= 1
+        assert result["set"] == 0
+
+    def test_scan_inbox_zero_contacts_all_no_logo(
+        self, mock_provider: Any, mocker: MockerFixture, sample_account: Account
+    ) -> None:
+        """Zero contacts + scan_inbox=True + no logos found for any sender.
+
+        Regression: verifies no crash and counters are correct when all
+        senders are from domains with no available logo.
+        """
+        mock_provider.contacts = []
+        mock_provider.senders = {"newguy@startup.io", "nobody@unknown.org"}
+
+        mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=None)
+
+        result = _process_account(
+            provider=mock_provider,
+            token="mock-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state={},
+            scan_inbox=True,
+        )
+
+        assert result["no_logo"] >= 1
+        assert result["set"] == 0
+
+    def test_scan_inbox_no_email_sender(
+        self, mock_provider: Any, mocker: MockerFixture, sample_account: Account
+    ) -> None:
+        """Sender with unparseable email is counted as no_email during scan."""
+        mock_provider.contacts = []
+        mock_provider.senders = {"not-an-email"}
+
+        result = _process_account(
+            provider=mock_provider,
+            token="mock-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state={},
+            scan_inbox=True,
+        )
+
+        assert result["no_email"] >= 1
+
+    def test_scan_inbox_counts_set_in_summary(
+        self,
+        mock_provider: Any,
+        sample_account: Account,
+    ) -> None:
+        """Inbox scan updates counts properly in the returned dict."""
+        # Arrange
+        mock_provider.contacts = []  # start empty to avoid Stage 4 interference
+        mock_provider.senders = {"newguy@startup.io", "nobody@unknown.org"}
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            scan_inbox=True,
+        )
+
+        # Assert — both new senders should have been created with logos
+        assert counts["set"] == 2
+
+    def test_scan_inbox_counts_personal_domain_skips(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Inbox scan counts personal domain skips."""
+        # Arrange
+        mocker.patch(
+            "brandbox.cli.logos.is_personal_domain",
+            side_effect=lambda d: d == "gmail.com",
+        )
+        # Pre-mark Alice as already processed so Stage 4 skips her
+        alice = sample_contacts[0]
+        mock_provider.contacts = [alice]
+        mock_provider.senders = {"newguy@startup.io", "person@gmail.com"}
+        app_state: dict[str, Any] = {sample_account.username: {alice.id: "company.com"}}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            scan_inbox=True,
+        )
+
+        # Assert
+        assert counts["set"] == 1  # newguy@startup.io was created (in scan)
+        assert counts["domain"] >= 1  # person@gmail.com skipped as personal
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1031,7 +1212,7 @@ class TestProcessAccountErrors:
         mocker.patch("brandbox.cli.logos.root_domain", side_effect=_domain_side_effect)
         mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
         mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
-        mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
         mocker.patch("brandbox.cli.state.save")
         mocker.patch("brandbox.cli.time.sleep")
 
@@ -1057,7 +1238,7 @@ class TestProcessAccountErrors:
             return mapping.get(email)
 
         mocker.patch("brandbox.cli.logos.root_domain", side_effect=_domain_overrides)
-        mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+        mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
         mock_provider.fail_create_contact = True
         mock_provider.contacts = [sample_contacts[0]]
         mock_provider.senders = {"alice@company.com", "newguy@startup.io"}
@@ -1065,7 +1246,7 @@ class TestProcessAccountErrors:
         contact_count_before = len(mock_provider.contacts)
 
         # Act
-        _process_account(
+        counts = _process_account(
             provider=mock_provider,
             token="test-token",
             account=sample_account,
@@ -1077,6 +1258,7 @@ class TestProcessAccountErrors:
 
         # Assert
         assert len(mock_provider.contacts) == contact_count_before  # no new contacts
+        assert counts["failed"] >= 1
 
     def test_contact_with_mixed_case_emails_matched_in_scan(
         self,
@@ -1137,7 +1319,7 @@ def mock_main_env(mocker: MockerFixture, mock_provider: Any) -> dict[str, Any]:
     mocker.patch("brandbox.cli.logos.root_domain", return_value="company.com")
     mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
     mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
-    mocker.patch("brandbox.cli.logos.get_logo", return_value=b"fake-png")
+    mocker.patch("brandbox.cli.logos.get_logo", return_value=_fake_logo())
     mocker.patch("brandbox.cli.time.sleep")
     return {"app_state": app_state, "mock_provider": mock_provider}
 
@@ -1252,13 +1434,12 @@ class TestMainListAccounts:
 
     def test_list_accounts_with_accounts(
         self,
+        mocker: MockerFixture,
         mock_main_env: dict[str, Any],
     ) -> None:
         """--list-accounts displays accounts when they exist."""
         # Arrange
-        from brandbox import cli as cli_module
-
-        cli_module.sys.argv = ["brandbox", "--list-accounts"]
+        mocker.patch("sys.argv", ["brandbox", "--list-accounts"])
         mock_provider = mock_main_env["mock_provider"]
         mock_provider.accounts = [
             Account(username="user@company.com", provider_name="microsoft"),
@@ -1272,13 +1453,12 @@ class TestMainListAccounts:
 
     def test_list_accounts_no_accounts(
         self,
+        mocker: MockerFixture,
         mock_main_env: dict[str, Any],
     ) -> None:
         """--list-accounts shows message when no accounts exist."""
         # Arrange
-        from brandbox import cli as cli_module
-
-        cli_module.sys.argv = ["brandbox", "--list-accounts"]
+        mocker.patch("sys.argv", ["brandbox", "--list-accounts"])
         mock_provider = mock_main_env["mock_provider"]
         mock_provider.accounts = []
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import requests
+from pytest_mock import MockerFixture
 
 from brandbox.providers.base import Account
 from brandbox.providers.microsoft import (
@@ -23,7 +24,9 @@ class TestMicrosoftProvider:
 
     # ── Internal helpers: _load_cache, _save_cache, _app, _headers, _get_paged ──
 
-    def test_constructor_creates_empty_cache_when_no_file(self, mocker, tmp_path: Path) -> None:
+    def test_constructor_creates_empty_cache_when_no_file(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """Token file missing -> creates a fresh empty cache without deserialize."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -38,7 +41,7 @@ class TestMicrosoftProvider:
         mock_cache_cls.assert_called_once()
         mock_cache_cls.return_value.deserialize.assert_not_called()
 
-    def test_constructor_loads_existing_cache(self, mocker, tmp_path: Path) -> None:
+    def test_constructor_loads_existing_cache(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """Token file exists -> deserializes cache from file contents."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -52,7 +55,7 @@ class TestMicrosoftProvider:
         mock_cache_cls.return_value.deserialize.assert_called_once_with('{"some": "cached-data"}')
 
     def test_constructor_uses_provided_client_id_and_token_file(
-        self, mocker, tmp_path: Path
+        self, mocker: MockerFixture, tmp_path: Path
     ) -> None:
         """Constructor stores the exact client_id and token_file passed in."""
         # Arrange
@@ -66,7 +69,9 @@ class TestMicrosoftProvider:
         assert provider._client_id == "my-app-id"
         assert provider._token_file == token_file
 
-    def test_save_cache_writes_when_state_changed(self, mocker, tmp_path: Path) -> None:
+    def test_save_cache_writes_when_state_changed(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """_save_cache writes serialized cache to file only when state changed."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -82,7 +87,9 @@ class TestMicrosoftProvider:
         assert token_file.read_text() == "serialized-data"
         mock_cache_cls.return_value.serialize.assert_called_once()
 
-    def test_save_cache_does_nothing_when_not_changed(self, mocker, tmp_path: Path) -> None:
+    def test_save_cache_does_nothing_when_not_changed(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """_save_cache does nothing when has_state_changed is False."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -97,7 +104,9 @@ class TestMicrosoftProvider:
         assert not token_file.exists()
         mock_cache_cls.return_value.serialize.assert_not_called()
 
-    def test_save_cache_creates_parent_directory(self, mocker, tmp_path: Path) -> None:
+    def test_save_cache_creates_parent_directory(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """_save_cache creates parent dirs when they don't exist."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -113,7 +122,9 @@ class TestMicrosoftProvider:
         assert token_file.exists()
         assert token_file.read_text() == "data"
 
-    def test_app_creates_public_client_application(self, mocker, tmp_path: Path) -> None:
+    def test_app_creates_public_client_application(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """_app() creates PublicClientApplication with correct parameters."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -129,7 +140,7 @@ class TestMicrosoftProvider:
         )
         assert app == mock_app_cls.return_value
 
-    def test_headers_returns_bearer_dict(self, mocker, tmp_path: Path) -> None:
+    def test_headers_returns_bearer_dict(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """_headers returns dict with Authorization Bearer header."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -141,7 +152,7 @@ class TestMicrosoftProvider:
         # Assert
         assert result == {"Authorization": "Bearer token-abc"}
 
-    def test_get_paged_single_page(self, mocker, tmp_path: Path) -> None:
+    def test_get_paged_single_page(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """_get_paged returns all items from a single-page response."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -161,7 +172,7 @@ class TestMicrosoftProvider:
             timeout=30,
         )
 
-    def test_get_paged_multiple_pages(self, mocker, tmp_path: Path) -> None:
+    def test_get_paged_multiple_pages(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """_get_paged follows @odata.nextLink to collect all pages."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -187,7 +198,7 @@ class TestMicrosoftProvider:
         assert mock_get.call_count == 2
         assert mock_get.call_args_list[1][0][0] == "https://graph.example.com/next"
 
-    def test_get_paged_empty_response(self, mocker, tmp_path: Path) -> None:
+    def test_get_paged_empty_response(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """_get_paged returns [] when response has no 'value' key."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -202,7 +213,7 @@ class TestMicrosoftProvider:
         # Assert
         assert items == []
 
-    def test_get_paged_raises_on_http_error(self, mocker, tmp_path: Path) -> None:
+    def test_get_paged_raises_on_http_error(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """_get_paged raises when the HTTP request fails."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -218,7 +229,7 @@ class TestMicrosoftProvider:
 
     # ── Auth: start_auth ────────────────────────────────────────────
 
-    def test_start_auth_successful_device_flow(self, mocker, tmp_path: Path) -> None:
+    def test_start_auth_successful_device_flow(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """start_auth returns device_code dict with URL, code, and flow."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -244,7 +255,9 @@ class TestMicrosoftProvider:
         assert result["_flow"]["user_code"] == "ABC123"
         mock_app_cls.return_value.initiate_device_flow.assert_called_once_with(scopes=SCOPES)
 
-    def test_start_auth_raises_when_device_flow_fails(self, mocker, tmp_path: Path) -> None:
+    def test_start_auth_raises_when_device_flow_fails(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """start_auth raises RuntimeError when device flow lacks user_code."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -259,7 +272,9 @@ class TestMicrosoftProvider:
         with pytest.raises(RuntimeError, match="Device flow failed"):
             provider.start_auth()
 
-    def test_start_auth_parses_url_from_msal_message(self, mocker, tmp_path: Path) -> None:
+    def test_start_auth_parses_url_from_msal_message(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """start_auth extracts URL from MSAL message when format varies."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -278,7 +293,7 @@ class TestMicrosoftProvider:
         assert result["code"] == "DEF456"
 
     def test_start_auth_fallback_url_and_code_when_message_malformed(
-        self, mocker, tmp_path: Path
+        self, mocker: MockerFixture, tmp_path: Path
     ) -> None:
         """start_auth falls back to defaults when message is empty."""
         # Arrange
@@ -299,7 +314,7 @@ class TestMicrosoftProvider:
 
     # ── Auth: finish_auth ───────────────────────────────────────────
 
-    def test_finish_auth_returns_username(self, mocker, tmp_path: Path) -> None:
+    def test_finish_auth_returns_username(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """finish_auth acquires token and returns last account username."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -325,7 +340,7 @@ class TestMicrosoftProvider:
         )
 
     def test_finish_auth_falls_back_to_id_token_when_no_accounts(
-        self, mocker, tmp_path: Path
+        self, mocker: MockerFixture, tmp_path: Path
     ) -> None:
         """finish_auth uses id_token_claims when no accounts in cache."""
         # Arrange
@@ -347,7 +362,7 @@ class TestMicrosoftProvider:
         assert username == "fallback@co.com"
 
     def test_finish_auth_returns_unknown_when_no_username_source(
-        self, mocker, tmp_path: Path
+        self, mocker: MockerFixture, tmp_path: Path
     ) -> None:
         """finish_auth returns 'unknown' when no accounts or id_token_claims."""
         # Arrange
@@ -367,7 +382,9 @@ class TestMicrosoftProvider:
         # Assert
         assert username == "unknown"
 
-    def test_finish_auth_raises_when_acquisition_fails(self, mocker, tmp_path: Path) -> None:
+    def test_finish_auth_raises_when_acquisition_fails(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """finish_auth raises RuntimeError when token acquisition fails."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -382,7 +399,7 @@ class TestMicrosoftProvider:
         with pytest.raises(RuntimeError, match="Authentication failed"):
             provider.finish_auth({"_flow": {}})
 
-    def test_finish_auth_calls_save_cache(self, mocker, tmp_path: Path) -> None:
+    def test_finish_auth_calls_save_cache(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """finish_auth persists cache after successful token acquisition."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -406,7 +423,7 @@ class TestMicrosoftProvider:
 
     # ── Account management: get_accounts, get_token ──────────────────
 
-    def test_get_accounts_returns_list(self, mocker, tmp_path: Path) -> None:
+    def test_get_accounts_returns_list(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_accounts returns Account objects from MSAL accounts."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -425,7 +442,7 @@ class TestMicrosoftProvider:
         assert accounts[0] == Account(username="alice@co.com", provider_name="microsoft")
         assert accounts[1] == Account(username="bob@co.com", provider_name="microsoft")
 
-    def test_get_accounts_empty(self, mocker, tmp_path: Path) -> None:
+    def test_get_accounts_empty(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_accounts returns [] when no MSAL accounts."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -439,7 +456,7 @@ class TestMicrosoftProvider:
         # Assert
         assert accounts == []
 
-    def test_get_token_found(self, mocker, tmp_path: Path) -> None:
+    def test_get_token_found(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_token returns access token when account is found."""
         # Arrange
         mock_cache = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -464,7 +481,7 @@ class TestMicrosoftProvider:
             SCOPES, account={"username": "user@co.com"}
         )
 
-    def test_get_token_account_not_found(self, mocker, tmp_path: Path) -> None:
+    def test_get_token_account_not_found(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_token raises RuntimeError when account not in cache."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -479,7 +496,9 @@ class TestMicrosoftProvider:
         with pytest.raises(RuntimeError, match="Account missing@co.com not found"):
             provider.get_token(account)
 
-    def test_get_token_silent_acquisition_fails(self, mocker, tmp_path: Path) -> None:
+    def test_get_token_silent_acquisition_fails(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_token raises RuntimeError when silent acquisition fails."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -496,7 +515,7 @@ class TestMicrosoftProvider:
             provider.get_token(account)
 
     def test_get_token_silent_acquisition_returns_dict_without_access_token(
-        self, mocker, tmp_path: Path
+        self, mocker: MockerFixture, tmp_path: Path
     ) -> None:
         """get_token raises when silent result lacks access_token."""
         # Arrange
@@ -515,7 +534,7 @@ class TestMicrosoftProvider:
         with pytest.raises(RuntimeError, match="Could not refresh token"):
             provider.get_token(account)
 
-    def test_get_token_calls_save_cache(self, mocker, tmp_path: Path) -> None:
+    def test_get_token_calls_save_cache(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_token persists cache after successful token acquisition."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -540,7 +559,9 @@ class TestMicrosoftProvider:
 
     # ── Contacts: get_contacts ──────────────────────────────────────
 
-    def test_get_contacts_returns_mapped_contacts(self, mocker, tmp_path: Path) -> None:
+    def test_get_contacts_returns_mapped_contacts(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_contacts returns Contact objects mapped from Graph response."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -577,7 +598,9 @@ class TestMicrosoftProvider:
         assert contacts[1].display_name == "Bob"
         assert contacts[1].emails == ["bob@work.com", "bob@pers.com"]
 
-    def test_get_contacts_handles_missing_email_addresses(self, mocker, tmp_path: Path) -> None:
+    def test_get_contacts_handles_missing_email_addresses(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_contacts assigns empty emails list when emailAddresses missing."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -602,7 +625,9 @@ class TestMicrosoftProvider:
         assert contacts[0].display_name == "No Email"
         assert contacts[0].emails == []
 
-    def test_get_contacts_handles_null_display_name(self, mocker, tmp_path: Path) -> None:
+    def test_get_contacts_handles_null_display_name(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_contacts uses empty string when displayName is missing."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -624,7 +649,9 @@ class TestMicrosoftProvider:
         # Assert
         assert contacts[0].display_name == ""
 
-    def test_get_contacts_skips_email_without_address_key(self, mocker, tmp_path: Path) -> None:
+    def test_get_contacts_skips_email_without_address_key(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_contacts filters out emailAddresses entries missing 'address'."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -649,7 +676,9 @@ class TestMicrosoftProvider:
         # Assert
         assert contacts[0].emails == []
 
-    def test_get_contacts_raises_when_id_missing(self, mocker, tmp_path: Path) -> None:
+    def test_get_contacts_raises_when_id_missing(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_contacts lets KeyError propagate when contact has no id."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -666,7 +695,7 @@ class TestMicrosoftProvider:
         with pytest.raises(KeyError):
             provider.get_contacts("token")
 
-    def test_get_contacts_empty_response(self, mocker, tmp_path: Path) -> None:
+    def test_get_contacts_empty_response(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_contacts returns [] when Graph returns no contacts."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -684,7 +713,7 @@ class TestMicrosoftProvider:
     # ── Recent senders: get_recent_senders ───────────────────────────
 
     def test_get_recent_senders_returns_lowered_stripped_emails(
-        self, mocker, tmp_path: Path
+        self, mocker: MockerFixture, tmp_path: Path
     ) -> None:
         """get_recent_senders returns sender emails lowered and stripped."""
         # Arrange
@@ -705,7 +734,7 @@ class TestMicrosoftProvider:
         # Assert
         assert senders == {"alice@co.com", "bob@work.com"}
 
-    def test_get_recent_senders_deduplicates(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_deduplicates(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_recent_senders returns unique email addresses via set."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -725,7 +754,9 @@ class TestMicrosoftProvider:
         # Assert
         assert senders == {"alice@co.com"}
 
-    def test_get_recent_senders_skips_missing_from_key(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_skips_missing_from_key(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_recent_senders skips messages without 'from' key."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -746,7 +777,9 @@ class TestMicrosoftProvider:
         # Assert
         assert senders == {"alice@co.com", "bob@co.com"}
 
-    def test_get_recent_senders_skips_missing_email_address(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_skips_missing_email_address(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_recent_senders skips messages without emailAddress key."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -766,7 +799,9 @@ class TestMicrosoftProvider:
         # Assert
         assert senders == {"alice@co.com"}
 
-    def test_get_recent_senders_skips_none_address(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_skips_none_address(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_recent_senders skips when address value is None."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -785,7 +820,7 @@ class TestMicrosoftProvider:
         # Assert
         assert senders == set()
 
-    def test_get_recent_senders_respects_limit(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_respects_limit(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """get_recent_senders passes min(limit, 999) as $top parameter."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -801,7 +836,9 @@ class TestMicrosoftProvider:
         url = mock_get.call_args[0][0]
         assert "$top=50" in url
 
-    def test_get_recent_senders_caps_limit_at_999(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_caps_limit_at_999(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_recent_senders caps $top at 999 per Graph API limit."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -817,7 +854,9 @@ class TestMicrosoftProvider:
         url = mock_get.call_args[0][0]
         assert "$top=999" in url
 
-    def test_get_recent_senders_uses_correct_graph_endpoint(self, mocker, tmp_path: Path) -> None:
+    def test_get_recent_senders_uses_correct_graph_endpoint(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_recent_senders hits the correct Graph inbox messages URL."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -837,7 +876,7 @@ class TestMicrosoftProvider:
 
     # ── Contact CRUD: create_contact, set_contact_photo ──────────────
 
-    def test_create_contact_returns_id_on_201(self, mocker, tmp_path: Path) -> None:
+    def test_create_contact_returns_id_on_201(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """create_contact returns contact id when API returns 201."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -864,7 +903,7 @@ class TestMicrosoftProvider:
             timeout=20,
         )
 
-    def test_create_contact_returns_id_on_200(self, mocker, tmp_path: Path) -> None:
+    def test_create_contact_returns_id_on_200(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """create_contact returns contact id when API returns 200."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -879,7 +918,9 @@ class TestMicrosoftProvider:
         # Assert
         assert result == "updated-id"
 
-    def test_create_contact_returns_none_on_failure(self, mocker, tmp_path: Path) -> None:
+    def test_create_contact_returns_none_on_failure(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """create_contact returns None when API returns non-2xx."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -893,7 +934,9 @@ class TestMicrosoftProvider:
         # Assert
         assert result is None
 
-    def test_create_contact_returns_none_when_id_missing(self, mocker, tmp_path: Path) -> None:
+    def test_create_contact_returns_none_when_id_missing(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """create_contact returns None when success response lacks 'id'."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -908,7 +951,9 @@ class TestMicrosoftProvider:
         # Assert
         assert result is None
 
-    def test_create_contact_non_json_response_raises(self, mocker, tmp_path: Path) -> None:
+    def test_create_contact_non_json_response_raises(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """create_contact propagates exception when JSON parsing fails."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -921,7 +966,9 @@ class TestMicrosoftProvider:
         with pytest.raises(ValueError, match="Expecting value"):
             provider.create_contact("token", "Name", "e@co.com")
 
-    def test_set_contact_photo_returns_true_on_200(self, mocker, tmp_path: Path) -> None:
+    def test_set_contact_photo_returns_true_on_200(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """set_contact_photo returns True when API returns 200."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -945,7 +992,9 @@ class TestMicrosoftProvider:
             timeout=30,
         )
 
-    def test_set_contact_photo_returns_true_on_204(self, mocker, tmp_path: Path) -> None:
+    def test_set_contact_photo_returns_true_on_204(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """set_contact_photo returns True when API returns 204."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -959,7 +1008,9 @@ class TestMicrosoftProvider:
         # Assert
         assert result is True
 
-    def test_set_contact_photo_returns_false_on_failure(self, mocker, tmp_path: Path) -> None:
+    def test_set_contact_photo_returns_false_on_failure(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """set_contact_photo returns False when API returns 4xx/5xx."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -975,7 +1026,9 @@ class TestMicrosoftProvider:
 
     # ── Constructor edge cases ───────────────────────────────────────
 
-    def test_constructor_handles_empty_token_file(self, mocker, tmp_path: Path) -> None:
+    def test_constructor_handles_empty_token_file(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """Constructor handles empty token file gracefully."""
         # Arrange
         mock_cache_cls = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -989,7 +1042,7 @@ class TestMicrosoftProvider:
         mock_cache_cls.return_value.deserialize.assert_called_once_with("")
         assert provider._cache == mock_cache_cls.return_value
 
-    def test_start_auth_uses_correct_scopes(self, mocker, tmp_path: Path) -> None:
+    def test_start_auth_uses_correct_scopes(self, mocker: MockerFixture, tmp_path: Path) -> None:
         """start_auth passes correct scopes to MSAL device flow."""
         # Arrange
         mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")
@@ -1006,7 +1059,9 @@ class TestMicrosoftProvider:
         # Assert
         mock_app_cls.return_value.initiate_device_flow.assert_called_once_with(scopes=SCOPES)
 
-    def test_get_token_uses_next_to_find_account(self, mocker, tmp_path: Path) -> None:
+    def test_get_token_uses_next_to_find_account(
+        self, mocker: MockerFixture, tmp_path: Path
+    ) -> None:
         """get_token uses next() to find the exact matching account."""
         # Arrange
         mock_cache = mocker.patch("brandbox.providers.microsoft.msal.SerializableTokenCache")

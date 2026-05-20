@@ -181,6 +181,7 @@ def _process_account(
     dry_run: bool = False,
     overwrite: bool = False,
     scan_inbox: bool = False,
+    logo_provider: bool = False,
 ) -> dict[str, Any]:
 
     provider_label = PROVIDER_LABELS.get(provider.name, provider.name)
@@ -196,6 +197,7 @@ def _process_account(
 
     account_state: dict[str, str] = app_state.setdefault(account.username, {})
     counts = dict(set=0, processed=0, no_logo=0, domain=0, no_email=0, failed=0)
+    added = 0
 
     # ── 1. Fetch contacts ──────────────────────────────────────────────────────
     with console.status("[dim]Fetching contacts...[/dim]", spinner="dots"):
@@ -204,6 +206,11 @@ def _process_account(
 
     # ── 2. Scan for new senders ────────────────────────────────────────────────
     if scan_inbox:
+        console.print()
+        console.print(
+            Rule("[bold]Inbox Scan: Creating contacts from recent senders[/bold]", style="cyan")
+        )
+        console.print()
         with console.status("[dim]Scanning for new senders...[/dim]", spinner="dots"):
             existing_emails = {e.lower() for c in contacts for e in c.emails}
             all_senders = provider.get_recent_senders(token, INBOX_SCAN_LIMIT)
@@ -212,32 +219,99 @@ def _process_account(
         console.print(f"  [dim]New senders[/dim] [bold]{len(new_senders)}[/bold] found")
 
         if new_senders and not dry_run:
-            added = 0
-            with console.status(
-                "[dim]Creating contacts (logo-verified senders only)...[/dim]",
-                spinner="dots",
-            ):
-                for email in sorted(new_senders):
-                    domain = logos.root_domain(email)
-                    if not domain or logos.is_personal_domain(domain):
-                        continue
-                    png = logos.get_logo(CACHE_DIR, domain)
-                    if not png:
-                        continue
-                    display_name = email.split("@")[0].replace(".", " ").title()
-                    cid = provider.create_contact(token, display_name, email)
-                    if not cid:
-                        continue
-                    if provider.set_contact_photo(token, cid, png):
-                        account_state[cid] = domain
-                        state.save(STATE_FILE, app_state)
-                        added += 1
-                    time.sleep(GRAPH_WRITE_DELAY)
+            # Group senders by root domain so logo is fetched once per domain
+            domain_senders: dict[str, list[str]] = {}
+            for email in sorted(new_senders):
+                domain = logos.root_domain(email)
+                if not domain or logos.is_personal_domain(domain):
+                    if domain is None:
+                        counts["no_email"] += 1
+                    else:
+                        counts["domain"] += 1
+                    continue
+                domain_senders.setdefault(domain, []).append(email)
+
+            scan_total = sum(len(emails) for emails in domain_senders.values())
+
+            if scan_total > 0:
+                scan_progress = Progress(
+                    SpinnerColumn(style="cyan"),
+                    TextColumn("[bold]{task.description}"),
+                    BarColumn(bar_width=30, style="dim", complete_style="cyan"),
+                    MofNCompleteColumn(),
+                    TimeElapsedColumn(),
+                    console=console,
+                    transient=False,
+                )
+
+                with scan_progress:
+                    task = scan_progress.add_task("Creating contacts", total=scan_total)
+
+                    for domain, emails in sorted(domain_senders.items()):
+                        logo_result = logos.get_logo(CACHE_DIR, domain)
+                        if not logo_result:
+                            counts["no_logo"] += len(emails)
+                            for _ in emails:
+                                scan_progress.update(
+                                    task,
+                                    advance=1,
+                                    description=f"[dim]No logo ({domain})[/dim]",
+                                )
+                            continue
+
+                        for email in emails:
+                            display_name = email.split("@")[0].replace(".", " ").title()
+                            scan_progress.update(
+                                task,
+                                description=f"[dim]{display_name}[/dim] [cyan]{domain}[/cyan]",
+                            )
+
+                            cid = provider.create_contact(token, display_name, email)
+                            if not cid:
+                                counts["failed"] += 1
+                                scan_progress.update(task, advance=1)
+                                continue
+
+                            if provider.set_contact_photo(token, cid, logo_result.png):
+                                account_state[cid] = domain
+                                added += 1
+                                provider_tag = (
+                                    f"  [dim]{logo_result.source}[/dim]" if logo_provider else ""
+                                )
+                                scan_progress.console.print(
+                                    f"  [green]✓[/green]  [bold]{display_name}[/bold]"
+                                    f"  [dim cyan]{domain}[/dim cyan]"
+                                    f"{provider_tag}"
+                                )
+                            else:
+                                counts["failed"] += 1
+
+                            scan_progress.update(task, advance=1)
+                            time.sleep(GRAPH_WRITE_DELAY)
+
+                    scan_progress.update(task, description="[dim]Done[/dim]")
+
+            # Batch-save once after all contacts created
+            state.save(STATE_FILE, app_state)
+            counts["set"] += added
 
             console.print(f"  [dim]Created[/dim]    [bold]{added}[/bold] new contacts with logos")
 
-    # ── 3. Process existing contacts ───────────────────────────────────────────
     console.print()
+    console.print(
+        Rule("[bold]Contact Photos: Setting logos on existing contacts[/bold]", style="cyan")
+    )
+    console.print()
+    if added:
+        with console.status("[dim]Refreshing contacts...[/dim]", spinner="dots"):
+            contacts = provider.get_contacts(token)
+
+    console.print()
+
+    if not contacts:
+        console.print("  [dim]No contacts to process[/dim]")
+        _print_summary(counts)
+        return counts
 
     progress = Progress(
         SpinnerColumn(style="cyan"),
@@ -285,18 +359,20 @@ def _process_account(
                 )
                 continue
 
-            png = logos.get_logo(CACHE_DIR, domain)
-            if not png:
+            logo_result = logos.get_logo(CACHE_DIR, domain)
+            if not logo_result:
                 counts["no_logo"] += 1
                 continue
 
-            if provider.set_contact_photo(token, contact.id, png):
+            if provider.set_contact_photo(token, contact.id, logo_result.png):
                 counts["set"] += 1
                 account_state[contact.id] = domain
                 state.save(STATE_FILE, app_state)
+                provider_tag = f"  [dim]{logo_result.source}[/dim]" if logo_provider else ""
                 progress.console.print(
                     f"  [green]✓[/green]  [bold]{contact.display_name[:40]}[/bold]"
                     f"  [dim cyan]{domain}[/dim cyan]"
+                    f"{provider_tag}"
                 )
             else:
                 counts["failed"] += 1
@@ -380,6 +456,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--data-dir", action="store_true", help="print the brandbox data directory path and exit"
+    )
+    parser.add_argument(
+        "--logo-provider",
+        action="store_true",
+        help="show the logo provider name (e.g. [hunter], [simpleicons]) next to each logo",
     )
     args = parser.parse_args()
 
@@ -514,24 +595,31 @@ def main() -> None:
         t_start = time.monotonic()
         totals = dict(set=0, processed=0, no_logo=0, domain=0, no_email=0, failed=0)
 
-        for i, (provider, account) in enumerate(all_accounts, 1):
-            try:
-                token = provider.get_token(account)
-                counts = _process_account(
-                    provider=provider,
-                    token=token,
-                    account=account,
-                    idx=i,
-                    total=len(all_accounts),
-                    app_state=app_state,
-                    dry_run=args.dry_run,
-                    overwrite=args.overwrite,
-                    scan_inbox=args.scan_inbox,
-                )
-                for k in totals:
-                    totals[k] += counts.get(k, 0)
-            except Exception as e:
-                console.print(f"\n  [red]✗[/red]  Error on [bold]{account.username}[/bold]: {e}\n")
+        try:
+            for i, (provider, account) in enumerate(all_accounts, 1):
+                try:
+                    token = provider.get_token(account)
+                    counts = _process_account(
+                        provider=provider,
+                        token=token,
+                        account=account,
+                        idx=i,
+                        total=len(all_accounts),
+                        app_state=app_state,
+                        dry_run=args.dry_run,
+                        overwrite=args.overwrite,
+                        scan_inbox=args.scan_inbox,
+                        logo_provider=args.logo_provider,
+                    )
+                    for k in totals:
+                        totals[k] += counts.get(k, 0)
+                except Exception as e:
+                    console.print(
+                        f"\n  [red]✗[/red]  Error on [bold]{account.username}[/bold]: {e}\n"
+                    )
+        except KeyboardInterrupt:
+            console.print("\n\n  [yellow]Interrupted by user.[/yellow] Exiting...\n")
+            sys.exit(130)
 
         if len(all_accounts) > 1:
             console.print()

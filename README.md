@@ -1,7 +1,7 @@
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/logo.svg">
-    <img src="docs/assets/brand/logo.png" width="500" alt="Brandbox Logo" />
+    <img src="https://github.com/divisionseven/brandbox/raw/main/docs/assets/brand/logo.png" width="450" alt="Brandbox Logo" />
   </picture>
 
 # BrandBox
@@ -32,16 +32,18 @@ Every version of Outlook and Gmail shows a colored circle with the sender's init
 
 ## Features
 
-| Feature                    | Description                                                                |
-| -------------------------- | -------------------------------------------------------------------------- |
-| **Logo Injection**         | Replaces generic initials with real company logos in Outlook and Gmail     |
-| **Cross-Client Sync**      | Logos appear on desktop, web, and mobile — set once at the API level       |
-| **Smart Logo Pipeline**    | Three-tier fallback: LogoKit → Brandfetch → Google favicon                 |
-| **Smart Image Processing** | Auto-crops transparency, pads to 200×200, centers on transparent canvas    |
-| **Multi-Provider**         | Microsoft 365, Outlook.com, Hotmail, Gmail, Google Workspace — all at once |
-| **Local Privacy**          | All data stays on your machine; nothing leaves except API calls for photos |
-| **Incremental Runs**       | Logo cache and contact state tracking make repeat runs near-instant        |
-| **Inbox Scan**             | Optionally creates contacts for recent senders (only when a logo is found) |
+| Feature                    | Description                                                                                                                                                                                                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Logo Injection**         | Replaces generic initials with real company logos in Outlook and Gmail                                                                                                                                                                                                              |
+| **Cross-Client Sync**      | Logos appear on desktop, web, and mobile — set once at the API level                                                                                                                                                                                                                |
+| **Smart Logo Pipeline**    | SVG-first with 7 sources: SimpleIcons → VectorLogo.Zone → Wikimedia Commons → Hunter → DeBounce → LogoKit → Brandfetch. SVGs provide inherent transparency — no white backgrounds in dark-mode Outlook/Gmail. Rasterized at 400×400px via cairosvg for crisp, high-resolution logos |
+| **Smart Image Processing** | Auto-crops transparency, scales to fill 200×200 preserving aspect ratio, centers on transparent canvas                                                                                                                                                                              |
+| **Multi-Provider**         | Microsoft 365, Outlook.com, Hotmail, Gmail, Google Workspace — all at once                                                                                                                                                                                                          |
+| **Local Privacy**          | All data stays on your machine; nothing leaves except API calls for photos                                                                                                                                                                                                          |
+| **Incremental Runs**       | Logo cache and contact state tracking make repeat runs near-instant                                                                                                                                                                                                                 |
+| **Inbox Scan**             | Optionally creates contacts for recent senders (only when a logo is found)                                                                                                                                                                                                          |
+| **Logo Provider Label**    | Optional `--logo-provider` flag shows the logo source (e.g. `[hunter]`, `[simpleicons]`) next to each logo in the progress output                                                                                                                                                   |
+| **Scan-Inbox Progress**    | Real-time progress bar with per-sender status, MofN counters, and elapsed time during inbox scan — no more silent waiting                                                                                                                                                           |
 
 ## Compatibility
 
@@ -50,6 +52,7 @@ Every version of Outlook and Gmail shows a colored circle with the sender's init
 | **Microsoft** | Microsoft 365 work/school, Personal/Family, Outlook.com, Hotmail, Live |
 | **Google**    | Gmail (personal), Google Workspace (business)                          |
 
+> [!Note]
 > On-premises Exchange (non-hybrid) and IMAP/POP3 accounts are not supported. If you have Gmail connected inside Outlook, add it separately as a Google provider account — see the [Google setup guide][docs-google-link].
 
 Both providers can run simultaneously. brandbox processes all authenticated accounts in a single `--run`.
@@ -170,7 +173,6 @@ brandbox --run
   ✓  Alice Johnson         company.com
   ✓  Bob Smith             acmecorp.com
   ·  Charlie Davis         gmail.com          (personal domain)
-  ✗  Diana Lee             corp.org           (upload failed)
   ✓  Eve Williams          example.io
   ...
 
@@ -185,6 +187,10 @@ Logos only show for people already in your contacts. This flag scans recent inbo
 brandbox --run --scan-inbox
 ```
 
+> [!Note]
+> A full `--run` with `--scan-inbox` can take 10+ minutes depending on inbox size and number of contacts.
+> So if you are processing a large number of contacts, or a full inbox, please be patient as brandbox works its magic.
+
 ### Preview without making changes
 
 ```bash
@@ -195,6 +201,15 @@ brandbox --run --dry-run
 
 ```bash
 brandbox --run --overwrite
+```
+
+### Show logo provider labels
+
+Shows the source provider (e.g. `[hunter]`, `[simpleicons]`) next to each logo
+in the progress output:
+
+```bash
+brandbox --run --logo-provider
 ```
 
 ### Refresh all logos from scratch
@@ -226,20 +241,21 @@ brandbox --data-dir
 <details>
 <summary><b>Click to expand full command reference</b></summary>
 
-| Flag                                 | Description                                              |
-| ------------------------------------ | -------------------------------------------------------- |
-| `--add-account`                      | Authenticate a new account                               |
-| `--add-account --provider microsoft` | Authenticate a Microsoft 365 account                     |
-| `--add-account --provider google`    | Authenticate a Google / Workspace account                |
-| `--list-accounts`                    | List all authenticated accounts                          |
-| `--run`                              | Inject logos for all accounts                            |
-| `--run --dry-run`                    | Preview without making changes                           |
-| `--run --overwrite`                  | Re-process contacts that already have logos              |
-| `--run --scan-inbox`                 | Also create contacts from recent senders (logo required) |
-| `--clear-cache`                      | Delete all cached logos (re-fetched on next `--run`)     |
-| `--reset-state`                      | Reset processed-contact state (re-evaluate all contacts) |
-| `--data-dir`                         | Show the brandbox data directory path                    |
-| `--version` / `-V`                   | Print version number                                     |
+| Flag                                 | Description                                                |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `--add-account`                      | Authenticate a new account                                 |
+| `--add-account --provider microsoft` | Authenticate a Microsoft 365 account                       |
+| `--add-account --provider google`    | Authenticate a Google / Workspace account                  |
+| `--list-accounts`                    | List all authenticated accounts                            |
+| `--run`                              | Inject logos for all accounts                              |
+| `--run --dry-run`                    | Preview without making changes                             |
+| `--run --overwrite`                  | Re-process contacts that already have logos                |
+| `--run --scan-inbox`                 | Also create contacts from recent senders (logo required)   |
+| `--run --logo-provider`              | Show logo source label (e.g. `[hunter]`) next to each logo |
+| `--clear-cache`                      | Delete all cached logos (re-fetched on next `--run`)       |
+| `--reset-state`                      | Reset processed-contact state (re-evaluate all contacts)   |
+| `--data-dir`                         | Show the brandbox data directory path                      |
+| `--version` / `-V`                   | Print version number                                       |
 
 ### Environment variables
 
@@ -266,7 +282,54 @@ Outlook and Gmail cache contact photos and won't show updates until they reload:
 
 ## Data & Privacy
 
-All data is stored locally on your machine:
+### Logo APIs (no personal data)
+
+When fetching company logos, BrandBox sends **only the company domain name** (e.g. `stripe.com`) to these services:
+
+| Service           | Data sent                                                                 |
+| ----------------- | ------------------------------------------------------------------------- |
+| SimpleIcons CDN   | Domain slug only (`stripe`)                                               |
+| VectorLogo.Zone   | Domain slug only (`stripe`)                                               |
+| Wikimedia Commons | Domain-based filename lookup. Includes `User-Agent: Brandbox/1.0` header. |
+| Hunter.io         | Domain in URL (`stripe.com`)                                              |
+| DeBounce          | Domain in URL (`stripe.com`)                                              |
+| LogoKit           | Domain in URL (`stripe.com`) + public free-tier token                     |
+| Brandfetch        | Domain in URL (`stripe.com`)                                              |
+
+**No authentication tokens, no user identifiers, and no personal data are sent to any logo API.**
+
+### Provider APIs (your data, your account)
+
+All contact operations go through your authenticated provider account (Google or Microsoft 365) under your own OAuth token. No third party has access to this data.
+
+**Microsoft Graph API** (`Mail.Read`, `Contacts.ReadWrite` scopes):
+- **Contacts**: Reads your contact list (`id`, `displayName`, `emailAddresses`). Uploads company logos as contact photos.
+- **Inbox scan** (`--scan-inbox`): Reads **only the `from` field** of recent inbox messages to discover new sender email addresses. **Message subjects, bodies, and attachments are never requested or read.**
+- **Contact creation**: New contacts are created with a display name and email address, derived from the sender's email (e.g. `john.doe@co.com` → `John Doe`).
+
+**Google People API** (`contacts`, `contacts.other.readonly`, `gmail.readonly` scopes):
+- **Contacts**: Reads your contact list (names, email addresses). Uploads company logos as contact photos.
+- **Inbox scan** (`--scan-inbox`): Uses the `otherContacts` endpoint — Google's pre-computed list of people you've interacted with. This is populated from your Gmail activity but accessed via the People API, not by reading individual messages.
+- **Contact creation**: Same as Microsoft — new contacts created with display name and email.
+
+### Authentication
+
+- **Google**: OAuth 2.0 browser flow via `InstalledAppFlow`. Tokens stored locally in `~/.local/share/brandbox/tokens/` and never shared with third parties.
+- **Microsoft**: MSAL device code flow. Tokens cached locally in the same directory.
+
+### Local storage
+
+All data is stored **locally on your machine** — **none of this data is ever transmitted**:
+
+| File                    | Contents                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------- |
+| `cache/*.png`           | Downloaded company logos (processed as 200×200 PNGs)                                          |
+| `cache/*.miss`          | Empty sentinel files marking domains with no logo (prevents retries)                          |
+| `state.json`            | Processing state: which contacts have been processed per account (contact IDs + domains only) |
+| `tokens/google_*.json`  | Google OAuth credentials                                                                      |
+| `tokens/microsoft.json` | Microsoft MSAL token cache                                                                    |
+
+Platform-specific data directory paths:
 
 | Platform | Path                                      |
 | -------- | ----------------------------------------- |
@@ -274,22 +337,16 @@ All data is stored locally on your machine:
 | Windows  | `%LOCALAPPDATA%\brandbox\brandbox\`       |
 | Linux    | `~/.local/share/brandbox/`                |
 
-Run `brandbox --data-dir` to see the exact path. The data directory contains:
+Run `brandbox --data-dir` to see the exact path.
 
-- **`cache/`** — Cached logo PNG files (and `.miss` sentinel files for domains with no logo)
-- **`tokens/`** — OAuth refresh tokens (keep private — never commit to version control)
-- **`state.json`** — Tracked set of contacts that have already been processed
+> [!Important]
+> **Keep the `tokens/` directory private.** It contains OAuth refresh tokens. Never share this or commit it to version control.
 
-> **Keep the `tokens/` directory private.** It contains OAuth refresh tokens. Never commit it to version control.
+### Telemetry
 
-brandbox only transmits data to:
+**BrandBox does not collect telemetry, analytics, crash reports, or usage data of any kind.** No data is ever sent to services other than the logo APIs and authentication providers listed above. There are no "phone-home" calls, no tracking pixels, and no third-party analytics SDKs.
 
-1. **Provider APIs** (Microsoft Graph / Google People) — to fetch contacts and upload photos
-2. **Logo APIs** (LogoKit, Brandfetch, Google favicon) — to fetch logo images
-
-Nothing else leaves your machine.
-
-See our [security documantation][security-docs-link].
+See our [security documentation][security-docs-link] to report any security issues.
 
 ## Testing
 
@@ -300,6 +357,14 @@ uv run pytest tests/ -v
 # Using pip
 pytest tests/ -v
 ```
+
+## Documentation
+
+| Document                                 | Description                                                                              |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [Microsoft 365 Setup](docs/microsoft.md) | How to configure Azure App Registration for Outlook contacts                             |
+| [Google Setup](docs/google.md)           | How to configure Google Cloud project for Gmail contacts                                 |
+| [How It Works](docs/how-it-works.md)     | Technical deep dive into the logo pipeline, contact discovery, and provider architecture |
 
 ## Contributing
 

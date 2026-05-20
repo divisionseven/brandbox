@@ -39,3 +39,9 @@ htmlcov/
 token_cache.json
 state.json
 cache/
+
+# Internal Documentation
+plans/
+internal_documentation/
+reviews/
+TODO.md/

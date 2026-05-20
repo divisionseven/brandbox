@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import builtins
 import io
 from collections import namedtuple
 from pathlib import Path
+from typing import Any
 
+import pytest
 import requests
 from PIL import Image
 from pytest_mock import MockerFixture
@@ -47,6 +50,12 @@ def _large_png_bytes() -> bytes:
 
 
 _VALID_LARGE_PNG = _large_png_bytes()
+
+
+@pytest.fixture(autouse=True)
+def _mock_svg_logo(mocker: MockerFixture) -> None:
+    """Prevent _fetch_svg_logo from hitting real SVG CDNs during tests."""
+    mocker.patch("brandbox.logos._fetch_svg_logo", return_value=(None, None))
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +241,57 @@ class TestIsPersonalDomain:
 
 
 # ---------------------------------------------------------------------------
+# Domain → SVG slug: _domain_to_slug()
+# ---------------------------------------------------------------------------
+
+
+class TestDomainToSlug:
+    """Tests for _domain_to_slug() — domain → SVG icon slug conversion."""
+
+    def test_standard_domain(self) -> None:
+        """stripe.com → stripe."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("stripe.com") == "stripe"
+
+    def test_domain_with_subdomain(self) -> None:
+        """mail.stripe.com → stripe."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("mail.stripe.com") == "stripe"
+
+    def test_dot_tld_domain(self) -> None:
+        """linear.app → linear (via SLUG_OVERRIDES)."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("linear.app") == "linear"
+
+    def test_empty_domain_returns_none(self) -> None:
+        """Empty string returns None."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("") is None
+
+    def test_minimal_domain(self) -> None:
+        """Single-part input 'localhost' returns None."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("localhost") is None
+
+    def test_case_insensitive(self) -> None:
+        """Stripe.Com → stripe (input is lowered)."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("Stripe.Com") == "stripe"
+
+    def test_domain_with_hyphen(self) -> None:
+        """mega-corp.co.uk → mega-corp."""
+        from brandbox.logos import _domain_to_slug
+
+        assert _domain_to_slug("mega-corp.co.uk") == "mega-corp"
+
+
+# ---------------------------------------------------------------------------
 # Path helpers: _png_path() and _miss_path()
 # ---------------------------------------------------------------------------
 
@@ -407,6 +467,15 @@ class TestLogoToPng:
         assert result_img.mode == "RGBA"
         assert result_img.size == (CANVAS_SIZE, CANVAS_SIZE)
 
+        # Verify the 50×50 image (upscaled) fills most of the canvas
+        alpha_result = result_img.split()[3]
+        bbox_result = alpha_result.getbbox()
+        assert bbox_result is not None
+        bbox_width = bbox_result[2] - bbox_result[0]
+        bbox_height = bbox_result[3] - bbox_result[1]
+        assert bbox_width >= 190  # at least 95% of canvas width
+        assert bbox_height >= 190  # at least 95% of canvas height
+
     def test_empty_bytes_returns_none(self) -> None:
         """Empty bytes input returns None."""
         # Act
@@ -422,6 +491,271 @@ class TestLogoToPng:
 
         # Assert
         assert result is None
+
+    def test_tiny_image_is_upscaled_to_fill_canvas(self) -> None:
+        """A tiny 24×24 image (like SimpleIcons rasterization) gets upscaled to fill the canvas."""
+        img = Image.new("RGBA", (24, 24), (255, 0, 0, 255))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        raw_bytes = buf.getvalue()
+
+        result = logo_to_png(raw_bytes)
+        assert result is not None
+
+        result_img = Image.open(io.BytesIO(result))
+        assert result_img.size == (CANVAS_SIZE, CANVAS_SIZE)
+        assert result_img.mode == "RGBA"
+
+        # Verify content fills the canvas (not a tiny 24×24 speck)
+        alpha = result_img.split()[3]
+        bbox = alpha.getbbox()
+        assert bbox is not None
+        bbox_w = bbox[2] - bbox[0]
+        bbox_h = bbox[3] - bbox[1]
+        assert bbox_w >= 190  # fills ≥95% of canvas
+        assert bbox_h >= 190
+
+
+# ---------------------------------------------------------------------------
+# SVG logo fetching: _fetch_svg_logo()
+# ---------------------------------------------------------------------------
+
+
+class TestFetchSvgLogo:
+    """Tests for _fetch_svg_logo() — SVG logo fetching and rasterization."""
+
+    # Override the module-level _mock_svg_logo fixture: we want the real function.
+    @pytest.fixture(autouse=True)
+    def _mock_svg_logo(self) -> None:
+        """Don't mock _fetch_svg_logo — we test the real function here."""
+
+    SVG_CONTENT = (
+        b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='100' height='100' fill='red'/></svg>"
+    )
+
+    @staticmethod
+    def _mock_cairosvg(mocker: MockerFixture) -> None:
+        """Replace cairosvg in sys.modules so _fetch_svg_logo uses a mock."""
+        mock_cairosvg = mocker.MagicMock()
+        mock_cairosvg.svg2png.return_value = b"x" * 100
+        mocker.patch.dict("sys.modules", {"cairosvg": mock_cairosvg})
+
+    def test_first_source_returns_svg(self, mocker: MockerFixture) -> None:
+        """When SimpleIcons returns valid SVG, PNG bytes are returned."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = self.SVG_CONTENT
+
+        self._mock_cairosvg(mocker)
+        result = _fetch_svg_logo("stripe.com")
+        assert result[0] is not None
+
+    def test_all_svg_sources_fail_returns_none(self, mocker: MockerFixture) -> None:
+        """When all SVG sources return 404, returns (None, None)."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 404
+        mock_get.return_value.content = b""
+
+        result = _fetch_svg_logo("stripe.com")
+        assert result == (None, None)
+
+    def test_non_svg_response_skipped(self, mocker: MockerFixture) -> None:
+        """HTML response (starts with <html) is skipped, next source tried."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = b"<html><body>error</body></html>"
+
+        result = _fetch_svg_logo("stripe.com")
+        assert result == (None, None)
+
+    def test_small_svg_accepted(self, mocker: MockerFixture) -> None:
+        """Very small SVG (147 bytes, like Vercel) is accepted — no min-size filter."""
+        from brandbox.logos import _fetch_svg_logo
+
+        small_svg = b"<svg viewBox='0 0 24 24'><path d='M0 0h24v24H0z'/></svg>"
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = small_svg
+
+        self._mock_cairosvg(mocker)
+        result = _fetch_svg_logo("vercel.com")
+        assert result[0] is not None
+
+    def test_slug_none_returns_none(self, mocker: MockerFixture) -> None:
+        """When domain is unparseable, returns None without making HTTP calls."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        result = _fetch_svg_logo("")
+        assert result == (None, None)
+        mock_get.assert_not_called()
+
+    def test_source_exception_continues(self, mocker: MockerFixture) -> None:
+        """When first source raises exception, next source is tried."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mocker.patch(
+            "brandbox.logos.requests.get",
+            side_effect=requests.RequestException("Connection error"),
+        )
+
+        result = _fetch_svg_logo("stripe.com")
+        assert result == (None, None)
+
+    def test_cairosvg_missing_returns_none(self, mocker: MockerFixture) -> None:
+        """When cairosvg is not installed, returns None gracefully."""
+        from brandbox.logos import _fetch_svg_logo
+
+        # Make requests.get return valid SVG
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = self.SVG_CONTENT
+
+        # Raise ImportError only for cairosvg; delegate everything else to real __import__
+        original_import = builtins.__import__
+
+        def mock_import(name: str, *args: Any) -> object:
+            if name == "cairosvg":
+                raise ImportError("No module named cairosvg")
+            return original_import(name, *args)
+
+        mocker.patch("builtins.__import__", side_effect=mock_import)
+
+        result = _fetch_svg_logo("stripe.com")
+        assert result == (None, None)
+
+    def test_svg_sources_ordered_correctly(self) -> None:
+        """SVG_SOURCES has SimpleIcons first, VectorLogo second."""
+        from brandbox.logos import SVG_SOURCES
+
+        assert "simpleicons" in SVG_SOURCES[0]
+        assert "vectorlogo" in SVG_SOURCES[1]
+
+
+# ---------------------------------------------------------------------------
+# SVG transparency: cairosvg rasterization produces real alpha
+# ---------------------------------------------------------------------------
+
+
+class TestSvgTransparency:
+    """Tests that SVG-originated PNGs have real alpha transparency."""
+
+    SVG_RED_CIRCLE = b"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" fill="red"/>
+    </svg>"""
+
+    def test_svg_originated_png_has_real_alpha(self) -> None:
+        """SVG→PNG rasterization produces RGBA with transparent pixels."""
+        try:
+            import cairosvg
+        except ImportError:
+            pytest.skip("cairosvg not installed")
+
+        png_bytes = cairosvg.svg2png(bytestring=self.SVG_RED_CIRCLE)
+        assert png_bytes is not None
+        img = Image.open(io.BytesIO(png_bytes))
+        assert img.mode == "RGBA"
+        alpha = img.split()[3]
+        assert alpha.getextrema()[0] == 0, "SVG-originated PNG must have transparent pixels"
+
+    def test_svg_png_processed_through_logo_to_png(self) -> None:
+        """SVG→PNG → logo_to_png produces valid 200×200 RGBA output."""
+        try:
+            import cairosvg
+        except ImportError:
+            pytest.skip("cairosvg not installed")
+
+        from brandbox.logos import logo_to_png
+
+        png_bytes = cairosvg.svg2png(bytestring=self.SVG_RED_CIRCLE)
+        assert png_bytes is not None
+        result = logo_to_png(png_bytes)
+        assert result is not None
+        result_img = Image.open(io.BytesIO(result))
+        assert result_img.mode == "RGBA"
+        assert result_img.size == (200, 200)
+
+        # With the 100×100 circle upscaled to fill 200×200, content fills the canvas
+        alpha_result = result_img.split()[3]
+        bbox_result = alpha_result.getbbox()
+        assert bbox_result is not None
+        bbox_width = bbox_result[2] - bbox_result[0]
+        bbox_height = bbox_result[3] - bbox_result[1]
+        assert bbox_width >= 190
+        assert bbox_height >= 190
+
+
+# ---------------------------------------------------------------------------
+# SVG content detection (startswith checks in _fetch_svg_logo)
+# ---------------------------------------------------------------------------
+
+
+class TestSvgDetection:
+    """Tests for SVG content detection (_fetch_svg_logo's startswith check)."""
+
+    # Override the module-level _mock_svg_logo fixture: we want the real function.
+    @pytest.fixture(autouse=True)
+    def _mock_svg_logo(self) -> None:
+        """Don't mock _fetch_svg_logo — we test the real function here."""
+
+    @staticmethod
+    def _mock_cairosvg(mocker: MockerFixture) -> None:
+        """Replace cairosvg in sys.modules so _fetch_svg_logo uses a mock."""
+        mock_cairosvg = mocker.MagicMock()
+        mock_cairosvg.svg2png.return_value = b"x" * 100
+        mocker.patch.dict("sys.modules", {"cairosvg": mock_cairosvg})
+
+    def test_detects_svg_start_tag(self, mocker: MockerFixture) -> None:
+        """Content starting with <svg is detected as SVG."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = b"<svg xmlns='...'><path/></svg>"
+
+        self._mock_cairosvg(mocker)
+        result = _fetch_svg_logo("stripe.com")
+        assert result[0] is not None
+
+    def test_detects_xml_declaration(self, mocker: MockerFixture) -> None:
+        """Content starting with <?xml is detected as SVG."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = b"<?xml version='1.0'?><svg>...</svg>"
+
+        self._mock_cairosvg(mocker)
+        result = _fetch_svg_logo("stripe.com")
+        assert result[0] is not None
+
+    def test_rejects_html(self, mocker: MockerFixture) -> None:
+        """Content starting with <html is rejected."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = b"<html><body>Not SVG</body></html>"
+
+        result = _fetch_svg_logo("stripe.com")
+        assert result == (None, None)
+
+    def test_rejects_empty(self, mocker: MockerFixture) -> None:
+        """Empty content is rejected."""
+        from brandbox.logos import _fetch_svg_logo
+
+        mock_get = mocker.patch("brandbox.logos.requests.get")
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.content = b""
+
+        result = _fetch_svg_logo("stripe.com")
+        assert result == (None, None)
 
 
 # ---------------------------------------------------------------------------
@@ -445,7 +779,7 @@ class TestFetchRaw:
         result = _fetch_raw("stripe.com")
 
         # Assert
-        assert result == _VALID_LARGE_PNG
+        assert result[0] == _VALID_LARGE_PNG
         assert mock_get.call_count >= 1
 
     def test_third_source_succeeds_after_failures(self, mocker: MockerFixture) -> None:
@@ -468,7 +802,7 @@ class TestFetchRaw:
         result = _fetch_raw("stripe.com")
 
         # Assert
-        assert result == _VALID_LARGE_PNG
+        assert result[0] == _VALID_LARGE_PNG
         assert mock_get.call_count == 3
 
     def test_all_sources_fail_returns_none(self, mocker: MockerFixture) -> None:
@@ -483,8 +817,8 @@ class TestFetchRaw:
         result = _fetch_raw("stripe.com")
 
         # Assert
-        assert result is None
-        assert mock_get.call_count == 3
+        assert result == (None, None)
+        assert mock_get.call_count == 4
 
     def test_response_too_small_skips_source(self, mocker: MockerFixture) -> None:
         """Content ≤800 bytes is treated as invalid and the next source is tried."""
@@ -506,7 +840,7 @@ class TestFetchRaw:
         result = _fetch_raw("stripe.com")
 
         # Assert
-        assert result == _VALID_LARGE_PNG
+        assert result[0] == _VALID_LARGE_PNG
         assert mock_get.call_count == 2
 
 
@@ -518,8 +852,8 @@ class TestFetchRaw:
 class TestGetLogo:
     """Tests for get_logo() — the cache+fetch pipeline."""
 
-    def test_cache_hit_returns_cached_bytes(self, cache_dir: Path) -> None:
-        """When a .png cache file exists, its bytes are returned directly."""
+    def test_cache_hit_returns_logo_src(self, cache_dir: Path) -> None:
+        """When a .png cache file exists, LogoSrc is returned."""
         # Arrange
         (cache_dir / "stripe.com.png").write_bytes(b"cached-png-data")
 
@@ -527,7 +861,10 @@ class TestGetLogo:
         result = get_logo(cache_dir, "stripe.com")
 
         # Assert
-        assert result == b"cached-png-data"
+        assert result is not None
+        assert result.png == b"cached-png-data"
+        assert result.source == "cache"
+        assert result.dims == "unknown"
 
     def test_known_miss_returns_none(self, cache_dir: Path) -> None:
         """When a .miss sentinel exists, get_logo returns None without fetching."""
@@ -545,23 +882,24 @@ class TestGetLogo:
     ) -> None:
         """When no cache and fetch succeeds, returns PNG bytes and writes cache."""
         # Arrange
-        mocker.patch("brandbox.logos._fetch_raw", return_value=_VALID_LARGE_PNG)
+        mocker.patch("brandbox.logos._fetch_raw", return_value=(_VALID_LARGE_PNG, "hunter"))
 
         # Act
         result = get_logo(cache_dir, "stripe.com")
 
         # Assert
         assert result is not None
-        assert isinstance(result, bytes)
+        assert result.png is not None
+        assert isinstance(result.png, bytes)
         # A .png file should now exist in the cache
         assert (cache_dir / "stripe.com.png").exists()
         # The cached content should match the returned value
-        assert (cache_dir / "stripe.com.png").read_bytes() == result
+        assert (cache_dir / "stripe.com.png").read_bytes() == result.png
 
     def test_no_cache_fetch_fails_writes_miss(self, cache_dir: Path, mocker: MockerFixture) -> None:
         """When no cache and fetch fails, returns None and writes .miss file."""
         # Arrange
-        mocker.patch("brandbox.logos._fetch_raw", return_value=None)
+        mocker.patch("brandbox.logos._fetch_raw", return_value=(None, None))
 
         # Act
         result = get_logo(cache_dir, "stripe.com")
@@ -583,7 +921,7 @@ class TestGetLogo:
         # work. The easiest approach: make the image fail during thumbnail/paste.
         # We can instead just mock _fetch_raw to return something _it_ considers
         # valid but that logo_to_png can't handle.
-        mocker.patch("brandbox.logos._fetch_raw", return_value=_VALID_LARGE_PNG)
+        mocker.patch("brandbox.logos._fetch_raw", return_value=(_VALID_LARGE_PNG, "hunter"))
         # Make logo_to_png return None by patching it
         mocker.patch("brandbox.logos.logo_to_png", return_value=None)
 
@@ -593,6 +931,51 @@ class TestGetLogo:
         # Assert
         assert result is None
         assert (cache_dir / "stripe.com.miss").exists()
+
+
+# ---------------------------------------------------------------------------
+# Full fallback chain: SVG → raster integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestFullFallbackChain:
+    """Integration tests for SVG→raster fallback in get_logo()."""
+
+    def test_svg_fails_raster_succeeds(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """SVG returns None → raster returns valid PNG → PNG returned."""
+        from brandbox.logos import get_logo
+
+        mocker.patch("brandbox.logos._fetch_svg_logo", return_value=(None, None))
+        mocker.patch("brandbox.logos._fetch_raw", return_value=(_VALID_LARGE_PNG, "hunter"))
+
+        result = get_logo(cache_dir, "stripe.com")
+        assert result is not None
+        assert result.png is not None
+
+    def test_svg_succeeds_raster_not_called(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """SVG returns PNG bytes → _fetch_raw is NOT called."""
+        from brandbox.logos import get_logo
+
+        mocker.patch(
+            "brandbox.logos._fetch_svg_logo", return_value=(_VALID_LARGE_PNG, "simpleicons:stripe")
+        )
+        mock_raw = mocker.patch("brandbox.logos._fetch_raw")
+
+        result = get_logo(cache_dir, "stripe.com")
+        assert result is not None
+        assert result.png is not None
+        mock_raw.assert_not_called()
+
+    def test_both_fail_writes_miss(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """Both SVG and raster fail → None returned and .miss file written."""
+        from brandbox.logos import get_logo, is_known_miss
+
+        mocker.patch("brandbox.logos._fetch_svg_logo", return_value=(None, None))
+        mocker.patch("brandbox.logos._fetch_raw", return_value=(None, None))
+
+        result = get_logo(cache_dir, "stripe.com")
+        assert result is None
+        assert is_known_miss(cache_dir, "stripe.com")
 
 
 # ---------------------------------------------------------------------------

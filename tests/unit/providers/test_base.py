@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from brandbox.providers.base import Account, Contact, Provider
@@ -94,10 +96,10 @@ class TestProvider:
         class CompleteProvider(Provider):
             name = "complete"
 
-            def start_auth(self) -> dict:
+            def start_auth(self) -> dict[str, Any]:
                 return {"type": "browser"}
 
-            def finish_auth(self, flow: dict) -> str:
+            def finish_auth(self, flow: dict[str, Any]) -> str:
                 return "user@test.com"
 
             def get_accounts(self) -> list[Account]:
@@ -131,7 +133,7 @@ class TestProvider:
         class IncompleteProvider(Provider):
             name = "incomplete"
 
-            def start_auth(self) -> dict:
+            def start_auth(self) -> dict[str, Any]:
                 return {"type": "browser"}
 
             # finish_auth is intentionally not implemented

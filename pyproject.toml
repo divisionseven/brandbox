@@ -4,12 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "brandbox"
-version = "0.1.0"
-description = "Inject company logos as contact photos in Microsoft 365 Outlook and Gmail"
+version = "0.2.0"
+description = "A powerful CLI tool that finds and sets company logos as your contact photos in Microsoft 365, Outlook, and Gmail"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "divisionseven" }]
-keywords = ["outlook", "microsoft365", "email", "logos", "contacts", "cli"]
+keywords = [
+    "outlook",
+    "microsoft365",
+    "gmail",
+    "inbox",
+    "email",
+    "logos",
+    "contacts",
+    "cli",
+    "branding",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -26,6 +36,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "cairosvg>=2.7.0",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.0",
     "msal>=1.28.0",
@@ -57,8 +68,6 @@ dev = [
     "mypy>=1.10.0",
 ]
 
-# uv
-
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.0.0",
@@ -68,8 +77,6 @@ dev-dependencies = [
     "mypy>=1.10.0",
 ]
 
-# ruff
-
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -78,14 +85,10 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["E501"]
 
-# mypy
-
 [tool.mypy]
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
-
-# pytest
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -95,8 +98,6 @@ markers = [
     "integration: Integration tests (require network or external services)",
     "slow: Tests that take longer than normal",
 ]
-
-# coverage
 
 [tool.coverage.run]
 source = ["brandbox"]
