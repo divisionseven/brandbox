@@ -201,9 +201,7 @@ def build_body(
         sections.append(commits_section)
 
     sections.append("---")
-    sections.append(
-        f"**Full changelog:** https://github.com/{repo}/blob/main/CHANGELOG.md"
-    )
+    sections.append(f"**Full changelog:** https://github.com/{repo}/blob/main/CHANGELOG.md")
 
     return "\n\n".join(sections) + "\n"
 
@@ -233,9 +231,7 @@ def main() -> int:
     prev_tag = get_previous_tag(version)
     commits = get_commits_since(prev_tag, args.repo)
     commits_section = build_commits_section(commits, prev_tag)
-    logo_block = build_logo_block(
-        args.logo_light, args.logo_dark, args.logo_width, args.project
-    )
+    logo_block = build_logo_block(args.logo_light, args.logo_dark, args.logo_width, args.project)
 
     body = build_body(
         version=version,
