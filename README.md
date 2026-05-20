@@ -6,7 +6,7 @@
 
 # BrandBox
 
-### Ditch the colored circles, add some branding to your inbox.
+### Ditch the colorful circles, add some branding to your inbox.
 
 [![License: MIT][license-badge-icon]][license-badge-link]
 [![Python Versions][python-badge-icon]][python-badge-link]

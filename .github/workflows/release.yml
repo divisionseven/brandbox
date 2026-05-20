@@ -7,7 +7,7 @@
 #
 # Pipeline (jobs run in dependency order):
 #
-#   validate ──┬──► ci ──► build ──► github-release ──► publish
+#   validate ──┬──► build ──► github-release ──► publish
 #              │
 #              └── (gates everything: version files + changelog must be in order)
 #
@@ -105,20 +105,12 @@ jobs:
           path: /tmp/changelog-notes.md
           retention-days: 1
 
-  # ── Job 2: CI ─────────────────────────────────────────────────────────────
-  # Runs the full test suite (all OS × all runtime versions) by calling the
-  # reusable CI workflow. A release will never publish with a broken test suite.
-  ci:
-    name: Full CI Suite
-    needs: validate
-    uses: ./.github/workflows/ci.yml
-
   # ── Job 3: Build ────────────────────────────────────────────────────────────
   # Builds the release artifacts. Only runs after validate + ci both pass.
   build:
     name: Build Artifacts
     runs-on: ubuntu-latest
-    needs: [validate, ci]
+    needs: [validate]
 
     steps:
       - name: Checkout

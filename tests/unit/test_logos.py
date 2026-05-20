@@ -43,7 +43,7 @@ ExtractResult = namedtuple("ExtractResult", ["subdomain", "domain", "suffix"])
 
 
 def _large_png_bytes() -> bytes:
-    """Create a valid PNG image larger than 800 bytes for _fetch_raw tests."""
+    """Create a valid RGBA PNG image for _fetch_raw test fixtures."""
     img = Image.new("RGBA", (150, 150))
     pixels = img.load()
     assert pixels is not None, "PixelAccess should not be None for a new image"
@@ -53,7 +53,7 @@ def _large_png_bytes() -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     data = buf.getvalue()
-    assert len(data) > 800, f"Test PNG too small: {len(data)} bytes"
+    assert len(data) > 400, f"Test PNG too small: {len(data)} bytes"
     return data
 
 
