@@ -6,15 +6,15 @@
 
 # BrandBox
 
-### Ditch the colorful circles, add some branding to your inbox.
+### Ditch the generic sender initials, add some branding to your inbox.
 
 [![License: MIT][license-badge-icon]][license-badge-link]
 [![Python Versions][python-badge-icon]][python-badge-link]
 [![Codecov][codecov-badge-icon]][codecov-badge-link]
 [![CI Build][ci-badge-icon]][ci-badge-link]
 
-[![PyPI Version][pypi-version-badge-icon]][pypi-badge-link]
-[![PyPI - Downloads][pypi-downloads-badge-icon]][pypi-badge-link]
+[![PyPI Version][pypi-version-badge-icon]][github-releases-badge-link]
+[![PyPI Downloads][pypi-downloads-badge-icon]][pypi-badge-link]
 
 <p>
   <a href="docs/microsoft.md">Microsoft Setup</a> &nbsp;·&nbsp; <a href="docs/google.md">Google Setup</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/issues">Report Bugs</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/issues/new">Request Features</a>
@@ -399,8 +399,9 @@ Distributed under the [MIT License][license-link].
 [ci-badge-icon]: https://img.shields.io/github/actions/workflow/status/divisionseven/brandbox/ci.yml?branch=main&logo=github&style=plastic&label=Build
 [ci-badge-link]: https://github.com/divisionseven/brandbox/actions/workflows/ci.yml
 
-[pypi-version-badge-icon]: https://img.shields.io/pypi/v/brandbox?style=plastic&logo=pypi&label=Pypi%20Version
-[pypi-downloads-badge-icon]: https://img.shields.io/pypi/dm/brandbox?style=plastic&logo=pypi&label=Downloads
+[pypi-version-badge-icon]: https://img.shields.io/pypi/v/brandbox?style=plastic&logo=pypi&label=Version
+[github-releases-badge-link]: https://github.com/divisionseven/brandbox/releases
+[pypi-downloads-badge-icon]: https://img.shields.io/pepy/dt/brandbox?style=plastic&logo=pypi&label=Downloads
 [pypi-badge-link]: https://pypi.org/project/brandbox/
 
 <!-- Documentation Links -->
