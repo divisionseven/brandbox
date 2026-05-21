@@ -390,17 +390,17 @@ uv run mypy src/
 Distributed under the [MIT License][license-link].
 
 <!-- Badge Links -->
-[python-badge-icon]: https://img.shields.io/pypi/pyversions/brandbox?logo=python&style=plastic&color=black&logoColor=white&label=Python
+[python-badge-icon]: https://img.shields.io/pypi/pyversions/brandbox?logo=python&style=plastic&label=Python
 [python-badge-link]: https://www.python.org/
-[license-badge-icon]: https://img.shields.io/badge/license-MIT-blue?style=plastic&logo=open-source-initiative&color=black&logoColor=white&label=License
+[license-badge-icon]: https://img.shields.io/badge/license-MIT-blue?style=plastic&logo=open-source-initiative&label=License
 [license-badge-link]: https://opensource.org/licenses/MIT
-[codecov-badge-icon]: https://img.shields.io/codecov/c/github/divisionseven/brandbox?logo=codecov&style=plastic&color=black&logoColor=white&label=Codecov
+[codecov-badge-icon]: https://img.shields.io/codecov/c/github/divisionseven/brandbox?logo=codecov&style=plastic&label=Codecov
 [codecov-badge-link]: https://app.codecov.io/gh/divisionseven/brandbox
-[ci-badge-icon]: https://img.shields.io/github/actions/workflow/status/divisionseven/brandbox/ci.yml?branch=main&logo=github&style=plastic&color=black&logoColor=white&label=Build
+[ci-badge-icon]: https://img.shields.io/github/actions/workflow/status/divisionseven/brandbox/ci.yml?branch=main&logo=github&style=plastic&label=Build
 [ci-badge-link]: https://github.com/divisionseven/brandbox/actions/workflows/ci.yml
 
-[pypi-version-badge-icon]: https://img.shields.io/pypi/v/brandbox?style=plastic&color=black&logo=pypi&logoColor=white&label=Pypi%20Version
-[pypi-downloads-badge-icon]: https://img.shields.io/pypi/dm/brandbox?style=plastic&logo=pypi&logoColor=white&label=Downloads&color=black
+[pypi-version-badge-icon]: https://img.shields.io/pypi/v/brandbox?style=plastic&logo=pypi&label=Pypi%20Version
+[pypi-downloads-badge-icon]: https://img.shields.io/pypi/dm/brandbox?style=plastic&logo=pypi&label=Downloads
 [pypi-badge-link]: https://pypi.org/project/brandbox/
 
 <!-- Documentation Links -->

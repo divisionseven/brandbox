@@ -49,7 +49,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
       # ── Linting ───────────────────────────────────────────────────────────────
@@ -100,10 +100,11 @@ jobs:
             sudo apt-get update && sudo apt-get install -y libcairo2-dev
           elif [ "$RUNNER_OS" = "macOS" ]; then
             brew install cairo
+            echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib:\$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
           elif [ "$RUNNER_OS" = "Windows" ]; then
             if command -v vcpkg &> /dev/null; then
               VCPKG_CMD="vcpkg"
-            elif [ -n "$VCPKG_ROOT" ] && [ -f "$VCPKG_ROOT/vcpkg" ]; then
+            elif [ -n "$VCPKG_ROOT" ] && { [ -f "$VCPKG_ROOT/vcpkg" ] || [ -f "$VCPKG_ROOT/vcpkg.exe" ]; }; then
               VCPKG_CMD="$VCPKG_ROOT/vcpkg"
             else
               echo "::warning::vcpkg not found — cairo may not be available"
@@ -111,14 +112,14 @@ jobs:
             fi
             if [ -n "$VCPKG_CMD" ]; then
               $VCPKG_CMD install cairo --triplet x64-windows
-              echo "CAIROCFFI_DLL_DIRECTORIES=C:\vcpkg\installed\x64-windows\bin" >> $GITHUB_ENV
+              echo "CAIROCFFI_DLL_DIRECTORIES=$VCPKG_ROOT/installed/x64-windows/bin" >> $GITHUB_ENV
             fi
           fi
         shell: bash
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
       - name: Run test suite (pytest)

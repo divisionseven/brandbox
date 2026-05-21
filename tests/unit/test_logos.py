@@ -44,11 +44,11 @@ ExtractResult = namedtuple("ExtractResult", ["subdomain", "domain", "suffix"])
 
 def _large_png_bytes() -> bytes:
     """Create a valid RGBA PNG image for _fetch_raw test fixtures."""
-    img = Image.new("RGBA", (150, 150))
+    img = Image.new("RGBA", (300, 300))
     pixels = img.load()
     assert pixels is not None, "PixelAccess should not be None for a new image"
-    for x in range(150):
-        for y in range(150):
+    for x in range(300):
+        for y in range(300):
             pixels[x, y] = (x * 2 % 256, y * 2 % 256, (x + y) % 256, 255)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
