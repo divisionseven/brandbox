@@ -12,6 +12,7 @@ Processing pipeline per domain:
 from __future__ import annotations
 
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import NamedTuple
 
@@ -332,6 +333,128 @@ def get_logo(cache_dir: Path, domain: str) -> LogoSrc | None:
     cached.write_bytes(png)
     assert isinstance(source, str)
     return LogoSrc(png, source, dims)
+
+
+def _fetch_single_source(
+    url: str, source_label: str, is_svg: bool = False
+) -> tuple[bytes | None, str | None]:
+    """Fetch a single URL and return (processed_png_bytes, source_label) or (None, None).
+
+    For SVG sources, this fetches the SVG content and rasterizes it via cairosvg.
+    For raster sources, this fetches the image bytes and validates they represent
+    a real image.
+
+    Returns (None, None) on any failure — individual source errors are caught
+    and do not propagate.
+    """
+    try:
+        resp = requests.get(url, timeout=10, allow_redirects=True)
+        if resp.status_code != 200:
+            return None, None
+        content = resp.content
+
+        if is_svg:
+            if not content.startswith((b"<svg", b"<?xml")):
+                return None, None
+            try:
+                import cairosvg
+            except (ImportError, OSError):
+                return None, None  # SVG unavailable for this source
+            raw_png = cairosvg.svg2png(bytestring=content, output_width=CANVAS_SIZE * 2)
+            if not raw_png or len(bytes(raw_png)) <= 50:
+                return None, None
+            return bytes(raw_png), source_label
+        else:
+            if len(content) <= 800:
+                return None, None
+            Image.open(io.BytesIO(content))  # validate it's a real image
+            return content, source_label
+    except Exception:
+        return None, None
+
+
+def get_all_logos(cache_dir: Path, domain: str) -> list[LogoSrc]:
+    """Try ALL logo sources in parallel and return all successful results.
+
+    Unlike ``get_logo()`` which returns the first successful result, this
+    function fetches from all 7 sources concurrently and returns every valid
+    logo found.
+
+    Flow:
+    1. Check .miss sentinel → return []
+    2. Check cache/domain.png → return [cached LogoSrc]
+    3. Build list of all source fetch tasks
+    4. Run all fetches in parallel via ThreadPoolExecutor
+    5. Collect all successful results
+    6. If 0 results: create .miss sentinel
+    7. Return list of LogoSrc (empty if none found)
+    """
+    if _miss_path(cache_dir, domain).exists():
+        return []
+
+    cached = _png_path(cache_dir, domain)
+    if cached.exists():
+        return [LogoSrc(cached.read_bytes(), "cache", "unknown")]
+
+    # Build task list
+    tasks: list[tuple[str, str, bool]] = []  # (url, label, is_svg)
+
+    slug = _domain_to_slug(domain)
+    if slug:
+        for template in SVG_SOURCES:
+            url = template.format(slug=slug)
+            label = "simpleicons:" + slug if "simpleicons" in template else "vectorlogo:" + slug
+            tasks.append((url, label, True))
+
+    if domain in WIKIMEDIA_FILENAMES:
+        filename = WIKIMEDIA_FILENAMES[domain]
+        url = f"https://commons.wikimedia.org/wiki/Special:FilePath/{filename}"
+        tasks.append((url, f"wikimedia:{filename}", True))
+
+    for template in LOGO_SOURCES:
+        url = template.format(domain=domain)
+        if "hunter" in template:
+            label = "hunter"
+        elif "debounce" in template:
+            label = "debounce"
+        elif "logokit" in template:
+            label = "logokit"
+        else:
+            label = "brandfetch"
+        tasks.append((url, label, False))
+
+    # Launch all tasks concurrently
+    results: list[LogoSrc] = []
+    with ThreadPoolExecutor(max_workers=len(tasks)) as executor:
+        future_map = {
+            executor.submit(_fetch_single_source, url, label, is_svg): (
+                url,
+                label,
+            )
+            for url, label, is_svg in tasks
+        }
+
+        for future in as_completed(future_map):
+            url, label = future_map[future]
+            try:
+                raw_bytes, _ = future.result()
+                if raw_bytes:
+                    png = logo_to_png(raw_bytes)
+                    if png:
+                        try:
+                            img = Image.open(io.BytesIO(raw_bytes))
+                            dims = f"{img.width}x{img.height}"
+                        except Exception:
+                            dims = "unknown"
+                        results.append(LogoSrc(png, label, dims))
+            except Exception:
+                continue  # Individual source failure — skip it
+
+    if not results:
+        _miss_path(cache_dir, domain).touch()
+        return []
+
+    return results
 
 
 def clear_cache(cache_dir: Path) -> int:

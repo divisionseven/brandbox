@@ -15,11 +15,13 @@ from pytest_mock import MockerFixture
 
 from brandbox.logos import (
     CANVAS_SIZE,
+    LogoSrc,
     _autocrop_alpha_padding,
     _fetch_raw,
     _miss_path,
     _png_path,
     clear_cache,
+    get_all_logos,
     get_logo,
     is_known_miss,
     is_personal_domain,
@@ -1039,3 +1041,125 @@ class TestClearCache:
 
         # Assert
         assert removed == 5
+
+
+# ---------------------------------------------------------------------------
+# get_all_logos() — parallel fetch from all sources
+# ---------------------------------------------------------------------------
+
+
+class TestGetAllLogos:
+    """Tests for the new get_all_logos() function.
+
+    The existing module-level ``_mock_svg_logo`` autouse fixture patches
+    ``_fetch_svg_logo`` — it has no effect here because ``get_all_logos()``
+    calls ``_fetch_single_source``, not ``_fetch_svg_logo``.
+    """
+
+    def test_returns_all_successful_sources(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """When multiple sources succeed, all valid LogoSrc items are returned."""
+        # Arrange
+        mocker.patch(
+            "brandbox.logos._fetch_single_source",
+            return_value=(_VALID_LARGE_PNG, "test-source"),
+        )
+        # stripe.com → 2 SVG + 4 raster = 6 tasks
+        expected_count = 6
+
+        # Act
+        results = get_all_logos(cache_dir, "stripe.com")
+
+        # Assert
+        assert len(results) == expected_count
+        for r in results:
+            assert isinstance(r, LogoSrc)
+            assert r.png is not None
+            assert r.source is not None
+
+    def test_returns_empty_for_known_miss(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """When a .miss sentinel exists, returns [] without fetching."""
+        # Arrange
+        (cache_dir / "stripe.com.miss").touch()
+        mock_fetch = mocker.patch("brandbox.logos._fetch_single_source")
+
+        # Act
+        results = get_all_logos(cache_dir, "stripe.com")
+
+        # Assert
+        assert results == []
+        mock_fetch.assert_not_called()
+
+    def test_returns_cached_logo(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """When a .png cache file exists, returns [LogoSrc(source='cache')]."""
+        # Arrange
+        (cache_dir / "stripe.com.png").write_bytes(b"cached-png-data")
+        mock_fetch = mocker.patch("brandbox.logos._fetch_single_source")
+
+        # Act
+        results = get_all_logos(cache_dir, "stripe.com")
+
+        # Assert
+        assert len(results) == 1
+        assert results[0].source == "cache"
+        assert results[0].png == b"cached-png-data"
+        mock_fetch.assert_not_called()
+
+    def test_creates_miss_when_no_logos(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """All sources return None → .miss sentinel created and [] returned."""
+        # Arrange
+        mocker.patch(
+            "brandbox.logos._fetch_single_source",
+            return_value=(None, None),
+        )
+
+        # Act
+        results = get_all_logos(cache_dir, "stripe.com")
+
+        # Assert
+        assert results == []
+        assert (cache_dir / "stripe.com.miss").exists()
+
+    def test_partial_failure_graceful(self, cache_dir: Path, mocker: MockerFixture) -> None:
+        """A source exception doesn't crash the function — successful results returned."""
+        # Arrange
+        import threading
+
+        state = {"lock": threading.Lock(), "count": 0}
+
+        def _mock_fetch(
+            url: str, label: str, is_svg: bool = False
+        ) -> tuple[bytes | None, str | None]:
+            with state["lock"]:
+                state["count"] += 1
+                if state["count"] == 1:
+                    raise RuntimeError("Connection error")
+            return _VALID_LARGE_PNG, label
+
+        mocker.patch(
+            "brandbox.logos._fetch_single_source",
+            side_effect=_mock_fetch,
+        )
+
+        # Act
+        results = get_all_logos(cache_dir, "stripe.com")
+
+        # Assert
+        assert len(results) >= 1  # at least the non-exception sources succeeded
+        assert all(isinstance(r, LogoSrc) for r in results)
+
+    def test_concurrent_fetch_all_sources_attempted(
+        self, cache_dir: Path, mocker: MockerFixture
+    ) -> None:
+        """All sources are attempted concurrently (6 for stripe.com)."""
+        # Arrange
+        mock_fetch = mocker.patch(
+            "brandbox.logos._fetch_single_source",
+            return_value=(_VALID_LARGE_PNG, "test"),
+        )
+        # stripe.com → 2 SVG + 4 raster = 6
+
+        # Act
+        get_all_logos(cache_dir, "stripe.com")
+
+        # Assert
+        assert mock_fetch.call_count == 6

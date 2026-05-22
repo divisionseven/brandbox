@@ -212,6 +212,30 @@ in the progress output:
 brandbox --run --logo-provider
 ```
 
+### Interactive logo selection
+
+When a domain has multiple logo candidates, the `--interactive` flag lets you
+pick the best one right in the terminal:
+
+```bash
+brandbox --run --interactive
+```
+
+How it works:
+
+1. All 7 logo sources are fetched **in parallel** for each domain
+2. If **multiple logos** are found, they're rendered as braille art directly in
+   the terminal (via the `artty` library) — use the **arrow keys** to select
+   your preferred logo
+3. If **only one logo** is found, it auto-selects with an `[auto: only 1 source]`
+   message — no prompt needed
+4. The chosen logo is cached normally, so interactive mode only shows up for
+   domains with genuine choices
+
+> [!Tip]
+> Combine with `--logo-provider` to see the source name (SimpleIcons, Hunter,
+> etc.) alongside each candidate during selection.
+
 ### Refresh all logos from scratch
 
 Clears the cached logo files and re-fetches everything on the next run:
@@ -252,6 +276,7 @@ brandbox --data-dir
 | `--run --overwrite`                  | Re-process contacts that already have logos                |
 | `--run --scan-inbox`                 | Also create contacts from recent senders (logo required)   |
 | `--run --logo-provider`              | Show logo source label (e.g. `[hunter]`) next to each logo |
+| `--run --interactive`                | Try all 7 sources in parallel and pick your preferred logo |
 | `--clear-cache`                      | Delete all cached logos (re-fetched on next `--run`)       |
 | `--reset-state`                      | Reset processed-contact state (re-evaluate all contacts)   |
 | `--data-dir`                         | Show the brandbox data directory path                      |

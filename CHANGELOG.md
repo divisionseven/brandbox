@@ -9,6 +9,18 @@ This project follows [Semantic Versioning](https://semver.org) and
 
 ## [Unreleased]
 
+### Added
+
+- **Interactive logo selection**: New `--interactive` flag fetches all 7 logo sources in
+  parallel per domain, renders candidate logos as terminal braille art via `artty`, and
+  lets users pick with arrow keys when multiple logos are found. Falls back to
+  `[auto: only 1 source]` when a single logo is found — no prompt needed.
+- **`get_all_logos()`**: New parallel logo fetch function in `logos.py` — tries all
+  7 sources concurrently via `ThreadPoolExecutor` and returns every successful
+  `LogoSrc` instead of stopping at the first match.
+- **Dependencies**: `artty >= 0.1.6` (PNG-to-braille rendering), `questionary >= 2.0.0`
+  (arrow-key selection prompt).
+
 ## [0.2.0] — 2026-05-20
 
 ### Added
