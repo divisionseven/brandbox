@@ -8,6 +8,7 @@ the same process_account loop runs identically for Microsoft and Google.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import shutil
 import sys
@@ -18,6 +19,7 @@ from typing import Any
 
 import questionary
 from artty import image_to_braille
+from PIL import Image
 from platformdirs import user_data_dir
 from rich import box
 from rich.console import Console
@@ -192,6 +194,81 @@ def _get_artty_width(console_width: int) -> int:
         return 0
 
 
+def _autocrop_logo_png(png_bytes: bytes) -> bytes:
+    """Remove transparent padding from a logo PNG, returning tightly-cropped PNG bytes.
+
+    Logo PNGs from the fetch pipeline are centered on a 200×200 transparent canvas.
+    This crops that padding so artty receives only the visible logo content.
+    """
+    buf = io.BytesIO(png_bytes)
+    img = Image.open(buf).convert("RGBA")
+
+    # Find bounding box of non-transparent pixels using the alpha channel
+    alpha = img.split()[3]
+    bbox = alpha.getbbox()
+
+    if bbox is None:
+        return png_bytes  # fully transparent — nothing to crop
+
+    # Check if there's actually transparent padding worth cropping
+    if bbox == (0, 0, img.width, img.height):
+        return png_bytes  # no transparent padding
+
+    # Crop to content and re-save
+    cropped = img.crop(bbox)
+    out = io.BytesIO()
+    cropped.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _prepare_logo_for_braille(png_bytes: bytes) -> bytes:
+    """Ensure logo PNG has enough contrast for artty braille rendering.
+
+    Dark/black logos on transparent backgrounds produce empty braille output
+    because artty's luminance threshold (50) treats both the dark logo and
+    the composited transparent background (1,1,1) as background.
+
+    This composites such logos onto white, producing a rendering consistent
+    with raster-source logos (background = dots, logo = visible blank shape).
+    """
+    buf = io.BytesIO(png_bytes)
+    img = Image.open(buf).convert("RGBA")
+
+    alpha = img.split()[3]
+    bbox = alpha.getbbox()
+    if bbox is None:
+        return png_bytes  # fully transparent — nothing to show
+
+    # Sample luminance of non-transparent pixels
+    cropped_region = img.crop(bbox)
+    total_lum = 0
+    count = 0
+    for px in cropped_region.getdata():
+        r, g, b, a = px
+        if a > 10:  # skip transparent pixels
+            total_lum += 0.299 * r + 0.587 * g + 0.114 * b
+            count += 1
+
+    if count == 0:
+        return png_bytes
+
+    avg_lum = total_lum / count
+
+    # artty's default threshold is 50. If logo content avg luminance is
+    # below threshold, composite onto white so it renders as visible
+    # negative-space (dots = white bg, blank = logo).
+    if avg_lum > 50:
+        return png_bytes  # bright enough — normal rendering works
+
+    # Composite dark logo onto white background
+    white_bg = Image.new("RGB", img.size, (255, 255, 255))
+    white_bg.paste(img, (0, 0), mask=alpha)
+
+    out = io.BytesIO()
+    white_bg.save(out, format="PNG")
+    return out.getvalue()
+
+
 def _show_logo_preview_and_select(
     results: list[LogoSrc],
     domain: str,
@@ -235,9 +312,11 @@ def _show_logo_preview_and_select(
             )
 
             if artty_width > 0:
-                # Write PNG to temp file
+                # Write PNG to temp file (cropping transparent padding first)
                 png_path = tmpdir / f"{i}_{slug}.png"
-                png_path.write_bytes(logo_result.png)
+                cropped_png = _autocrop_logo_png(logo_result.png)
+                prepared_png = _prepare_logo_for_braille(cropped_png)
+                png_path.write_bytes(prepared_png)
 
                 # Render via artty
                 try:
@@ -257,7 +336,7 @@ def _show_logo_preview_and_select(
                 # Display in a panel
                 console.print(
                     Panel(
-                        artty_output,
+                        Text.from_ansi(artty_output),
                         title=f"[bold]{i + 1}[/bold]. {logo_result.source}",
                         title_align="left",
                         border_style="dim",
@@ -285,12 +364,11 @@ def _show_logo_preview_and_select(
         console.print("")  # spacing
 
         selected = questionary.select(
-            f"  Which logo for [bold cyan]{domain}[/bold cyan]?",
+            f"  Which logo for {domain}?",
             choices=choices,
             qmark="▶",
             pointer="◆",
             use_arrow_keys=True,
-            use_emojis=False,
             style=questionary.Style(
                 [
                     ("qmark", "fg:yellow bold"),
