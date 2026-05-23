@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "brandbox"
-version = "0.2.0"
-description = "A powerful CLI tool that finds and sets company logos as your contact photos in Microsoft 365, Outlook, and Gmail"
+version = "0.3.0"
+description = "A powerful CLI tool that finds and sets sender logos to their contact photos in Microsoft and Google emails."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "divisionseven" }]

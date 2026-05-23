@@ -9,6 +9,8 @@ This project follows [Semantic Versioning](https://semver.org) and
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-22
+
 ### Added
 
 - **Interactive logo selection**: New `--interactive` flag fetches all 7 logo sources in

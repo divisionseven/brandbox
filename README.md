@@ -162,7 +162,7 @@ brandbox --run
 
 ```
   ┌────────────────────────────────────┐
-  │ brandbox  v0.2.0                   │
+  │ brandbox  v0.3.0                   │
   │ Add some branding to your inbox!   │
   └────────────────────────────────────┘
 
