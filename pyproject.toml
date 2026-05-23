@@ -36,12 +36,14 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "artty>=0.1.6",
     "cairosvg>=2.7.0",
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.0",
     "msal>=1.28.0",
     "Pillow>=10.0.0",
     "platformdirs>=4.0.0",
+    "questionary>=2.0.0",
     "requests>=2.31.0",
     "rich>=13.0.0",
     "tldextract>=5.0.0",
@@ -66,6 +68,7 @@ dev = [
     "pytest-mock>=3.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "types-requests>=2.32.0",
 ]
 
 [tool.uv]
@@ -75,6 +78,7 @@ dev-dependencies = [
     "pytest-mock>=3.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+    "types-requests>=2.32.0",
 ]
 
 [tool.ruff]

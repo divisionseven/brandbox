@@ -9,6 +9,30 @@ This project follows [Semantic Versioning](https://semver.org) and
 
 ## [Unreleased]
 
+### Added
+
+- **Interactive logo selection**: New `--interactive` flag fetches all 7 logo sources in
+  parallel per domain, renders candidate logos as terminal braille art via `artty`, and
+  lets users pick with arrow keys when multiple logos are found. Falls back to
+  `[auto: only 1 source]` when a single logo is found — no prompt needed.
+- **`get_all_logos()`**: New parallel logo fetch function in `logos.py` — tries all
+  7 sources concurrently via `ThreadPoolExecutor` and returns every successful
+  `LogoSrc` instead of stopping at the first match.
+- **Dependencies**: `artty >= 0.1.6` (PNG-to-braille rendering), `questionary >= 2.0.0`
+  (arrow-key selection prompt).
+
+### Fixed
+
+- **Empty braille panels for dark SVG logos (SimpleIcons, VectorLogoZone, Wikimedia)**:
+  Dark/black SVG logos (e.g., SimpleIcons squarespace with `fill="#000000"`) produced empty
+  braille output because artty composites transparent→(1,1,1) and its threshold=50 treats both
+  the dark logo (luminance ~0) and composited background (luminance ~1) as background → zero
+  braille dots. Added `_prepare_logo_for_braille()` that detects dark logos (avg luminance
+  < 50) and composites them onto a white background before passing to artty. This makes them
+  render as negative-space braille (background = dots, logo = blank shape), consistent with
+  raster-source logos. Some logo panels appeared completely empty (no braille characters) in
+  the interactive selector.
+
 ## [0.2.0] — 2026-05-20
 
 ### Added
@@ -69,6 +93,31 @@ This project follows [Semantic Versioning](https://semver.org) and
 
 ### Fixed
 
+- **Logo braille preview rendered tiny with excessive blank space**: Logo PNGs were centered on a
+  200×200 transparent canvas by the fetch pipeline. `artty` composites transparent → (1,1,1) before
+  calling `getbbox()`, so the bounding box always covered the full canvas and the logo rendered very
+  small with wasted terminal space. Added `_autocrop_logo_png()` helper that uses Pillow
+  `Image.getbbox()` on the alpha channel to crop transparent padding from the PNG bytes before
+  passing the image to artty — reused the existing `_autocrop_alpha_padding()` pattern from
+  `logos.py`.
+- **Raw Rich markup displayed in questionary prompt**: The `questionary.select()` dialog message
+  contained Rich markup syntax (`[bold cyan]{domain}[/bold cyan]`), but questionary delegates to
+  prompt_toolkit's formatted text system which does not understand Rich markup — brackets and tags
+  were rendered as literal text. Removed the inline Rich markup; the question text retains its bold
+  weight via the `("question", "bold")` style in the `Style` object, so no visual regression.
+- **Raw ANSI color codes visible as text**: `Text.from_ansi()` now wraps the braille art
+  output from `artty.image_to_braille()` before passing it to Rich's `Panel()`. Rich
+  previously treated raw ANSI escape sequences (`\033[38;2;R;G;Bm`) as plain text rather
+  than colour instructions, rendering the codes as visible garbage characters.
+- **Distorted braille art in Panel**: `Panel()` received raw ANSI-escaped strings from
+  `artty.image_to_braille()`, causing Rich's `cell_len()` to count ANSI escape characters
+  (~20 per colour span) as visible cells, inflating the panel width and breaking the
+  layout. Fixed by wrapping with `Text.from_ansi(artty_output)` so Rich parses the codes
+  into native styled spans with correct cell widths.
+- **`use_emojis=False` crashes questionary select**: `questionary.select()` does not
+  support a `use_emojis` keyword argument in prompt_toolkit 3.0.52 — passing it raised
+  `TypeError: PromptSession.__init__() got an unexpected keyword argument 'use_emojis'`.
+  Removed the unsupported kwarg from the interactive selection call.
 - **Ugly Ctrl-C stack trace**: Wrapped the account processing loop in
   `try/except KeyboardInterrupt`. Hitting Ctrl-C now prints a clean
   `"Interrupted by user. Exiting..."` message and exits with code 130 instead of

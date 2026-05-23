@@ -8,12 +8,18 @@ the same process_account loop runs identically for Microsoft and Google.
 from __future__ import annotations
 
 import argparse
+import io
 import os
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
+import questionary
+from artty import image_to_braille
+from PIL import Image
 from platformdirs import user_data_dir
 from rich import box
 from rich.console import Console
@@ -32,6 +38,7 @@ from rich.table import Table
 from rich.text import Text
 
 from brandbox import __version__, logos, state
+from brandbox.logos import LogoSrc
 from brandbox.providers import (
     PROVIDER_NAMES,
     Account,
@@ -83,7 +90,7 @@ def _print_banner() -> None:
         Panel(
             Text.from_markup(
                 f"[bold]brandbox[/bold]  [dim]v{__version__}[/dim]\n"
-                "[dim]Inject company logos into Outlook and Gmail contacts[/dim]"
+                "[dim]Add some branding to your inbox![/dim]"
             ),
             border_style="cyan",
             padding=(0, 2),
@@ -168,6 +175,229 @@ def _display_auth_prompt(provider_name: str, auth_info: dict[str, Any]) -> None:
         )
 
 
+# ── Interactive logo selection ─────────────────────────────────────────────────
+
+
+def _get_artty_width(console_width: int) -> int:
+    """
+    Calculate the optimal artty rendering width based on terminal width.
+
+    - If console_width >= 105: return 100 (max width)
+    - If console_width >= 25: return console_width - 5 (fit with margin)
+    - Otherwise: return 0 (terminal too narrow)
+    """
+    if console_width >= 105:
+        return 100
+    elif console_width >= 25:
+        return console_width - 5
+    else:
+        return 0
+
+
+def _autocrop_logo_png(png_bytes: bytes) -> bytes:
+    """Remove transparent padding from a logo PNG, returning tightly-cropped PNG bytes.
+
+    Logo PNGs from the fetch pipeline are centered on a 200×200 transparent canvas.
+    This crops that padding so artty receives only the visible logo content.
+    """
+    buf = io.BytesIO(png_bytes)
+    img = Image.open(buf).convert("RGBA")
+
+    # Find bounding box of non-transparent pixels using the alpha channel
+    alpha = img.split()[3]
+    bbox = alpha.getbbox()
+
+    if bbox is None:
+        return png_bytes  # fully transparent — nothing to crop
+
+    # Check if there's actually transparent padding worth cropping
+    if bbox == (0, 0, img.width, img.height):
+        return png_bytes  # no transparent padding
+
+    # Crop to content and re-save
+    cropped = img.crop(bbox)
+    out = io.BytesIO()
+    cropped.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _prepare_logo_for_braille(png_bytes: bytes) -> bytes:
+    """Ensure logo PNG has enough contrast for artty braille rendering.
+
+    Dark/black logos on transparent backgrounds produce empty braille output
+    because artty's luminance threshold (50) treats both the dark logo and
+    the composited transparent background (1,1,1) as background.
+
+    This composites such logos onto white, producing a rendering consistent
+    with raster-source logos (background = dots, logo = visible blank shape).
+    """
+    buf = io.BytesIO(png_bytes)
+    img = Image.open(buf).convert("RGBA")
+
+    alpha = img.split()[3]
+    bbox = alpha.getbbox()
+    if bbox is None:
+        return png_bytes  # fully transparent — nothing to show
+
+    # Sample luminance of non-transparent pixels
+    cropped_region = img.crop(bbox)
+    total_lum = 0
+    count = 0
+    for px in list(cropped_region.getdata()):
+        r, g, b, a = px
+        if a > 10:  # skip transparent pixels
+            total_lum += 0.299 * r + 0.587 * g + 0.114 * b
+            count += 1
+
+    if count == 0:
+        return png_bytes
+
+    avg_lum = total_lum / count
+
+    # artty's default threshold is 50. If logo content avg luminance is
+    # below threshold, composite onto white so it renders as visible
+    # negative-space (dots = white bg, blank = logo).
+    if avg_lum > 50:
+        return png_bytes  # bright enough — normal rendering works
+
+    # Composite dark logo onto white background
+    white_bg = Image.new("RGB", img.size, (255, 255, 255))
+    white_bg.paste(img, (0, 0), mask=alpha)
+
+    out = io.BytesIO()
+    white_bg.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _show_logo_preview_and_select(
+    results: list[LogoSrc],
+    domain: str,
+    console: Console,
+    progress: Progress,
+) -> LogoSrc:
+    """
+    Display all logo candidates via artty and let user pick one.
+
+    For each LogoSrc in results:
+    1. Write PNG bytes to a temp file
+    2. Call image_to_braille() to render as braille art
+    3. Display in a Rich Panel with a numbered title
+
+    Then use questionary.select() for user to pick.
+    Clean up temp files when done.
+    """
+    tmpdir = None
+    try:
+        # Pause the progress display
+        progress.stop()
+
+        # Create temp directory
+        tmpdir = Path(tempfile.mkdtemp(prefix=f"brandbox_{domain}_"))
+
+        # Calculate artty width based on terminal
+        artty_width = _get_artty_width(console.width)
+
+        # Print header
+        console.print()
+        console.rule(f"[bold yellow]Logo candidates for [cyan]{domain}[/cyan][/bold yellow]")
+        console.print()
+
+        rendered_displays: list[tuple[int, str, LogoSrc]] = []
+
+        for i, logo_result in enumerate(results):
+            slug = (
+                logo_result.source.split(":")[0]
+                if ":" in logo_result.source
+                else logo_result.source
+            )
+
+            if artty_width > 0:
+                # Write PNG to temp file (cropping transparent padding first)
+                png_path = tmpdir / f"{i}_{slug}.png"
+                cropped_png = _autocrop_logo_png(logo_result.png)
+                prepared_png = _prepare_logo_for_braille(cropped_png)
+                png_path.write_bytes(prepared_png)
+
+                # Render via artty
+                try:
+                    artty_output = image_to_braille(
+                        path=str(png_path),
+                        width=artty_width,
+                        threshold=50,
+                        contrast=1.0,
+                        sharpness=1.0,
+                        crop_padding=30,
+                        color=True,
+                        transparent="ignore",
+                    )
+                except Exception:
+                    artty_output = f"[red]Failed to render {logo_result.source}[/red]"
+
+                # Display in a panel
+                console.print(
+                    Panel(
+                        Text.from_ansi(artty_output),
+                        title=f"[bold]{i + 1}[/bold]. {logo_result.source}",
+                        title_align="left",
+                        border_style="dim",
+                        padding=(0, 1),
+                    )
+                )
+                console.print()
+            else:
+                # Terminal too narrow for images — fallback to text
+                console.print(
+                    f"  [bold]{i + 1}.[/bold] {logo_result.source}  [dim]({logo_result.dims})[/dim]"
+                )
+
+            rendered_displays.append((i, logo_result.source, logo_result))
+
+        if artty_width == 0:
+            console.print(
+                f"\n  [yellow]⚠ Terminal too narrow ({console.width}) to render logo images. Minimum 25 columns required.[/yellow]"
+            )
+            console.print("  [dim]Showing text-only selection.[/dim]\n")
+
+        # Build choices for questionary
+        choices = [{"name": r.source, "value": r} for _, _, r in rendered_displays]
+
+        console.print("")  # spacing
+
+        selected: LogoSrc | None = questionary.select(
+            f"  Which logo for {domain}?",
+            choices=choices,
+            qmark="▶",
+            pointer="◆",
+            use_arrow_keys=True,
+            style=questionary.Style(
+                [
+                    ("qmark", "fg:yellow bold"),
+                    ("question", "bold"),
+                    ("answer", "fg:cyan bold"),
+                    ("pointer", "fg:cyan bold"),
+                    ("highlighted", "fg:cyan bold"),
+                    ("selected", "fg:green"),
+                ]
+            ),
+        ).ask()
+
+        if selected is None:
+            # User cancelled — pick first as default
+            selected = results[0]
+            console.print(f"  [dim]No selection made, using: [cyan]{selected.source}[/cyan][/dim]")
+
+        console.print(f"  [green]✓[/green] Selected: [bold]{selected.source}[/bold]")
+
+        return selected
+
+    finally:
+        # Clean up temp directory
+        if tmpdir is not None and Path(tmpdir).exists():
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        # Resume progress display
+        progress.start()
+
+
 # ── Core: process one account ──────────────────────────────────────────────────
 
 
@@ -182,6 +412,7 @@ def _process_account(
     overwrite: bool = False,
     scan_inbox: bool = False,
     logo_provider: bool = False,
+    interactive: bool = False,
 ) -> dict[str, Any]:
 
     provider_label = PROVIDER_LABELS.get(provider.name, provider.name)
@@ -351,7 +582,8 @@ def _process_account(
                 counts["processed"] += 1
                 continue
 
-            if dry_run:
+            # ── Dry-run: non-interactive only (short-circuit before fetch) ──
+            if dry_run and not interactive:
                 progress.console.print(
                     f"  [dim]~[/dim]  [bold]{contact.display_name[:40]}[/bold]"
                     f"  [dim cyan]{domain}[/dim cyan]"
@@ -359,16 +591,47 @@ def _process_account(
                 )
                 continue
 
-            logo_result = logos.get_logo(CACHE_DIR, domain)
-            if not logo_result:
-                counts["no_logo"] += 1
+            # ── Logo fetch (interactive or normal) ──────────────────────────────
+            if interactive:
+                results = logos.get_all_logos(CACHE_DIR, domain)
+                if not results:
+                    counts["no_logo"] += 1
+                    continue
+                elif len(results) == 1:
+                    logo_result = results[0]
+                    progress.console.print(
+                        f"  [dim]~[/dim]  [bold]{contact.display_name[:40]}[/bold]"
+                        f"  [dim cyan]{domain}[/dim cyan]"
+                        f"  [dim]{logo_result.source}[/dim]  [auto: only 1 source]"
+                    )
+                    if not dry_run and logo_result.source != "cache":
+                        logos._png_path(CACHE_DIR, domain).write_bytes(logo_result.png)
+                    provider_tag = f"  [dim]{logo_result.source}[/dim]  [auto: only 1 source]"
+                else:
+                    logo_result = _show_logo_preview_and_select(results, domain, console, progress)
+                    # Cache the selected logo
+                    if not dry_run:
+                        logos._png_path(CACHE_DIR, domain).write_bytes(logo_result.png)
+                    provider_tag = f"  [dim]{logo_result.source}[/dim]  [green]✓ selected[/green]"
+            else:
+                logo_result = logos.get_logo(CACHE_DIR, domain)
+                if not logo_result:
+                    counts["no_logo"] += 1
+                    continue
+                provider_tag = f"  [dim]{logo_result.source}[/dim]" if logo_provider else ""
+
+            # ── Dry-run: skip upload ─────────────────────────────────────────────
+            if dry_run:
                 continue
 
+            # ── Upload (shared path) ─────────────────────────────────────────────
             if provider.set_contact_photo(token, contact.id, logo_result.png):
                 counts["set"] += 1
                 account_state[contact.id] = domain
                 state.save(STATE_FILE, app_state)
-                provider_tag = f"  [dim]{logo_result.source}[/dim]" if logo_provider else ""
+                provider_tag = (
+                    f"  [dim]{logo_result.source}[/dim]" if (logo_provider or interactive) else ""
+                )
                 progress.console.print(
                     f"  [green]✓[/green]  [bold]{contact.display_name[:40]}[/bold]"
                     f"  [dim cyan]{domain}[/dim cyan]"
@@ -461,6 +724,11 @@ def main() -> None:
         "--logo-provider",
         action="store_true",
         help="show the logo provider name (e.g. [hunter], [simpleicons]) next to each logo",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="when multiple logos found, let you pick interactively",
     )
     args = parser.parse_args()
 
@@ -610,6 +878,7 @@ def main() -> None:
                         overwrite=args.overwrite,
                         scan_inbox=args.scan_inbox,
                         logo_provider=args.logo_provider,
+                        interactive=args.interactive,
                     )
                     for k in totals:
                         totals[k] += counts.get(k, 0)

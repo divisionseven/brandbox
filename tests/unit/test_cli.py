@@ -17,6 +17,7 @@ from rich.table import Table
 from brandbox import cli
 from brandbox.cli import (
     _display_auth_prompt,
+    _get_artty_width,
     _google_creds_path,
     _ms_client_id,
     _print_banner,
@@ -1815,3 +1816,368 @@ class TestMainModule:
 
         assert CACHE_DIR.exists()
         assert TOKEN_DIR.exists()
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  _get_artty_width
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestGetArttyWidth:
+    """Tests for the terminal-width calculation (``_get_artty_width``)."""
+
+    def test_wide_terminal_returns_100(self) -> None:
+        """console.width=120 should return 100 (capped at max)."""
+        assert _get_artty_width(120) == 100
+
+    def test_medium_terminal_width_minus_5(self) -> None:
+        """console.width=80 should return 75 (width - 5)."""
+        assert _get_artty_width(80) == 75
+
+    def test_narrow_terminal_returns_0(self) -> None:
+        """console.width=20 should return 0 (too narrow)."""
+        assert _get_artty_width(20) == 0
+
+    def test_edge_case_25_returns_20(self) -> None:
+        """console.width=25 should return 20 (exact lower boundary)."""
+        assert _get_artty_width(25) == 20
+
+    def test_edge_case_24_returns_0(self) -> None:
+        """console.width=24 should return 0 (just below lower boundary)."""
+        assert _get_artty_width(24) == 0
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  --interactive flag parsing
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestInteractiveFlag:
+    """Tests for the ``--interactive`` argument parsing."""
+
+    @pytest.fixture(autouse=True)
+    def _interactive_patches(self, mocker: MockerFixture) -> None:
+        """Prevent main() from actually running anything."""
+        mocker.patch("brandbox.cli._print_banner")
+        mocker.patch("brandbox.cli.build_providers", return_value={"mock": mocker.MagicMock()})
+        mocker.patch("brandbox.cli.get_provider")
+        mock_provider = mocker.MagicMock()
+        mock_provider.get_accounts.return_value = [
+            Account(username="user@company.com", provider_name="microsoft"),
+        ]
+        mock_provider.get_token.return_value = "mock-token"
+        mocker.patch("brandbox.cli.build_providers", return_value={"mock": mock_provider})
+
+    def test_interactive_flag_parsed(self, mocker: MockerFixture) -> None:
+        """``--run --interactive`` → args.interactive is True."""
+        # Arrange
+        mocker.patch("sys.argv", ["brandbox", "--run", "--interactive"])
+        mock_process = mocker.patch(
+            "brandbox.cli._process_account",
+            return_value={
+                "set": 0,
+                "processed": 0,
+                "no_logo": 0,
+                "domain": 0,
+                "no_email": 0,
+                "failed": 0,
+            },
+        )
+        mocker.patch("brandbox.cli.state.load", return_value={})
+
+        # Act
+        main()
+
+        # Assert
+        mock_process.assert_called_once()
+        _, kwargs = mock_process.call_args
+        assert kwargs.get("interactive") is True
+
+    def test_interactive_flag_default_false(self, mocker: MockerFixture) -> None:
+        """``--run`` alone → args.interactive is False."""
+        # Arrange
+        mocker.patch("sys.argv", ["brandbox", "--run"])
+        mock_process = mocker.patch(
+            "brandbox.cli._process_account",
+            return_value={
+                "set": 0,
+                "processed": 0,
+                "no_logo": 0,
+                "domain": 0,
+                "no_email": 0,
+                "failed": 0,
+            },
+        )
+        mocker.patch("brandbox.cli.state.load", return_value={})
+
+        # Act
+        main()
+
+        # Assert
+        mock_process.assert_called_once()
+        _, kwargs = mock_process.call_args
+        assert kwargs.get("interactive") is False
+
+    def test_interactive_with_dry_run(self, mocker: MockerFixture) -> None:
+        """``--run --interactive --dry-run`` → both flags are True."""
+        # Arrange
+        mocker.patch("sys.argv", ["brandbox", "--run", "--interactive", "--dry-run"])
+        mock_process = mocker.patch(
+            "brandbox.cli._process_account",
+            return_value={
+                "set": 0,
+                "processed": 0,
+                "no_logo": 0,
+                "domain": 0,
+                "no_email": 0,
+                "failed": 0,
+            },
+        )
+        mocker.patch("brandbox.cli.state.load", return_value={})
+
+        # Act
+        main()
+
+        # Assert
+        mock_process.assert_called_once()
+        _, kwargs = mock_process.call_args
+        assert kwargs.get("interactive") is True
+        assert kwargs.get("dry_run") is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  _process_account  —  interactive mode
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestInteractiveMode:
+    """Tests for interactive mode logic in ``_process_account()``.
+
+    These tests exercise the ``interactive=True`` code path:
+      * Single-result domains auto-select (no prompt)
+      * Multi-result domains call ``_show_logo_preview_and_select``
+      * Selected logos are cached (unless dry-run)
+      * Zero-result domains get ``no_logo`` count
+    """
+
+    @pytest.fixture(autouse=True)
+    def _setup_mocks(self, mocker: MockerFixture) -> None:
+        """Default patches for all interactive-mode tests."""
+        mocker.patch("brandbox.cli.logos.root_domain", side_effect=_domain_side_effect)
+        mocker.patch("brandbox.cli.logos.is_personal_domain", return_value=False)
+        mocker.patch("brandbox.cli.logos.is_known_miss", return_value=False)
+        mocker.patch("brandbox.cli.state.save")
+        mocker.patch("brandbox.cli.time.sleep")
+
+    def test_single_source_auto_select(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Single result auto-selects — no preview shown, logo uploaded."""
+        # Arrange
+        mocker.patch(
+            "brandbox.cli.logos.get_all_logos",
+            return_value=[_fake_logo()],
+        )
+        mock_select = mocker.patch("brandbox.cli._show_logo_preview_and_select")
+        mock_provider.contacts = [sample_contacts[0]]
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            interactive=True,
+        )
+
+        # Assert
+        mock_select.assert_not_called()
+        assert counts["set"] == 1
+
+    def test_multiple_sources_shows_selector(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Multiple results call ``_show_logo_preview_and_select``."""
+        # Arrange
+        logos = [
+            _fake_logo(b"png1", "source1"),
+            _fake_logo(b"png2", "source2"),
+            _fake_logo(b"png3", "source3"),
+        ]
+        mocker.patch("brandbox.cli.logos.get_all_logos", return_value=logos)
+        selected = logos[1]
+        mock_select = mocker.patch(
+            "brandbox.cli._show_logo_preview_and_select",
+            return_value=selected,
+        )
+        mock_provider.contacts = [sample_contacts[0]]
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            interactive=True,
+        )
+
+        # Assert
+        mock_select.assert_called_once()
+        args, _ = mock_select.call_args
+        assert args[0] is logos  # first positional arg = the results list
+        assert counts["set"] == 1
+
+    def test_multiple_sources_selected_logo_cached(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Selected logo is written to cache (non-dry-run)."""
+        # Arrange
+        logos = [
+            _fake_logo(b"png1", "source1"),
+            _fake_logo(b"png2", "source2"),
+        ]
+        mocker.patch("brandbox.cli.logos.get_all_logos", return_value=logos)
+        selected = logos[1]
+        mocker.patch(
+            "brandbox.cli._show_logo_preview_and_select",
+            return_value=selected,
+        )
+        mock_path = mocker.MagicMock()
+        mocker.patch("brandbox.cli.logos._png_path", return_value=mock_path)
+        mock_provider.contacts = [sample_contacts[0]]
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            interactive=True,
+        )
+
+        # Assert
+        mock_path.write_bytes.assert_called_once_with(selected.png)
+        assert counts["set"] == 1
+
+    def test_dry_run_does_not_cache(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Dry-run mode does NOT cache the selected logo or upload."""
+        # Arrange
+        logos = [
+            _fake_logo(b"png1", "source1"),
+            _fake_logo(b"png2", "source2"),
+        ]
+        mocker.patch("brandbox.cli.logos.get_all_logos", return_value=logos)
+        mocker.patch(
+            "brandbox.cli._show_logo_preview_and_select",
+            return_value=logos[0],
+        )
+        mock_path = mocker.MagicMock()
+        mocker.patch("brandbox.cli.logos._png_path", return_value=mock_path)
+        mock_provider.contacts = [sample_contacts[0]]
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            interactive=True,
+            dry_run=True,
+        )
+
+        # Assert
+        mock_path.write_bytes.assert_not_called()
+        assert counts["set"] == 0
+
+    def test_no_logos_skipped(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Zero results → no_logo counted and contact skipped."""
+        # Arrange
+        mocker.patch(
+            "brandbox.cli.logos.get_all_logos",
+            return_value=[],
+        )
+        mock_provider.contacts = [sample_contacts[0]]
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            interactive=True,
+        )
+
+        # Assert
+        assert counts["no_logo"] == 1
+        assert counts["set"] == 0
+
+    def test_cached_logo_uses_cache(
+        self,
+        mocker: MockerFixture,
+        mock_provider: Any,
+        sample_contacts: list[Contact],
+        sample_account: Account,
+    ) -> None:
+        """Cached logo (source='cache') is treated as single-result auto-select."""
+        # Arrange
+        mocker.patch(
+            "brandbox.cli.logos.get_all_logos",
+            return_value=[_fake_logo(b"cached-png", "cache")],
+        )
+        mock_select = mocker.patch("brandbox.cli._show_logo_preview_and_select")
+        mock_provider.contacts = [sample_contacts[0]]
+        app_state: dict[str, Any] = {}
+
+        # Act
+        counts = _process_account(
+            provider=mock_provider,
+            token="test-token",
+            account=sample_account,
+            idx=1,
+            total=1,
+            app_state=app_state,
+            interactive=True,
+        )
+
+        # Assert
+        mock_select.assert_not_called()
+        assert counts["set"] == 1
