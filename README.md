@@ -17,7 +17,7 @@
 [![PyPI Downloads][pypi-downloads-badge-icon]][pypi-badge-link]
 
 <p>
-  <a href="docs/microsoft.md">Microsoft Setup</a> &nbsp;·&nbsp; <a href="docs/google.md">Google Setup</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/issues">Report Bugs</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/issues/new">Request Features</a>
+  <a href="https://github.com/divisionseven/brandbox/blob/main/docs/microsoft.md">Microsoft Setup</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/blob/main/docs/google.md">Google Setup</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/issues">Report Bugs</a> &nbsp;·&nbsp; <a href="https://github.com/divisionseven/brandbox/issues/new">Request Features</a>
 </p>
 
 </div>
@@ -44,6 +44,7 @@ Every version of Outlook and Gmail shows a colored circle with the sender's init
 | **Inbox Scan**             | Optionally creates contacts for recent senders (only when a logo is found)                                                                                                                                                                                                          |
 | **Logo Provider Label**    | Optional `--logo-provider` flag shows the logo source (e.g. `[hunter]`, `[simpleicons]`) next to each logo in the progress output                                                                                                                                                   |
 | **Scan-Inbox Progress**    | Real-time progress bar with per-sender status, MofN counters, and elapsed time during inbox scan — no more silent waiting                                                                                                                                                           |
+| **Interactive Selection**  | When multiple logos are found for a domain, `--interactive` renders each candidate as braille art in the terminal so you can arrow-key pick the best one — no more guessing which source has the right logo                                                                         |
 
 ## Compatibility
 
@@ -60,24 +61,24 @@ Both providers can run simultaneously. brandbox processes all authenticated acco
 ## Requirements
 
 - **Python 3.11+**
-- A free **Azure App Registration** for Microsoft 365 accounts → [full setup guide][docs-microsoft-link]
-- A free **Google Cloud project** for Gmail / Workspace accounts → [full setup guide][docs-google-link]
+- A free **Azure App Registration** for Microsoft 365 accounts → [Microsoft Setup Guide][docs-microsoft-link]
+- A free **Google Cloud project** for Gmail / Workspace accounts → [Google Setup Guide][docs-google-link]
 
 ## Installation
 
-### With uv (recommended)
+### With `uv` (Recommended)
 
 ```bash
 uv tool install brandbox
 ```
 
-### With pip
+### With `pip`
 
 ```bash
 pip install brandbox
 ```
 
-### From source
+### From Source
 
 ```bash
 git clone https://github.com/divisionseven/brandbox
@@ -126,7 +127,7 @@ Add to `~/.zshrc` or `~/.zshenv` to persist across shell sessions.
 
 ## Usage
 
-### Add an account
+### Add an Account
 
 Authenticate your first account. You'll be prompted to choose a provider:
 
@@ -143,13 +144,13 @@ brandbox --add-account --provider google
 
 A browser window (Google) or device code prompt (Microsoft) will guide you through sign-in. Repeat for each account across both providers.
 
-### List accounts
+### List Accounts
 
 ```bash
 brandbox --list-accounts
 ```
 
-### Run logo injection
+### Run Logo Injection
 
 Process all authenticated accounts and inject logos:
 
@@ -157,15 +158,15 @@ Process all authenticated accounts and inject logos:
 brandbox --run
 ```
 
-**Expected output:**
+**Example Output:**
 
 ```
-  ┌──────────────────────────────────────────────────┐
-  │ brandbox  v0.1.0                                 │
-  │ Inject company logos into Outlook and Gmail      │
-  └──────────────────────────────────────────────────┘
+  ┌────────────────────────────────────┐
+  │ brandbox  v0.2.0                   │
+  │ Add some branding to your inbox!   │
+  └────────────────────────────────────┘
 
-  ── you@company.com  ·  Microsoft 365  ·  1 of 1 ──
+  ── you@company.com  ·  Microsoft 365  ·  1 of 1 ───────────────────────
 
   Contacts   147 found
 
@@ -176,10 +177,10 @@ brandbox --run
   ✓  Eve Williams          example.io
   ...
 
-  ✓  118 set  ·  22 already processed  ·  4 no logo  ·  2 personal domain  ·  1 failed
+  ✓  118 set  ·  22 already processed  ·  4 no logo  ·  2 personal domain
 ```
 
-### Also create contacts for recent senders
+### Automatically Create Contacts for Recent Senders
 
 Logos only show for people already in your contacts. This flag scans recent inbox senders and creates a contact for each one — but only if a logo can be found first. No logo = no contact created.
 
@@ -191,19 +192,19 @@ brandbox --run --scan-inbox
 > A full `--run` with `--scan-inbox` can take 10+ minutes depending on inbox size and number of contacts.
 > So if you are processing a large number of contacts, or a full inbox, please be patient as brandbox works its magic.
 
-### Preview without making changes
+### Preview Without Making Changes
 
 ```bash
 brandbox --run --dry-run
 ```
 
-### Re-process contacts that already have logos
+### Re-Process Contacts That Already Have Logos
 
 ```bash
 brandbox --run --overwrite
 ```
 
-### Show logo provider labels
+### Show Logo Provider Labels
 
 Shows the source provider (e.g. `[hunter]`, `[simpleicons]`) next to each logo
 in the progress output:
@@ -212,31 +213,76 @@ in the progress output:
 brandbox --run --logo-provider
 ```
 
-### Interactive logo selection
+### Interactive Logo Selection
 
-When a domain has multiple logo candidates, the `--interactive` flag lets you
-pick the best one right in the terminal:
+Sometimes a domain has different logo versions out there, and you may have a favorite that you want to use. The `--interactive` flag lets you
+see all candidates (if more than one logo was found for a domain), and pick the best one right in the terminal:
 
 ```bash
 brandbox --run --interactive
 ```
 
-How it works:
+Each candidate is rendered as braille art (using the `artty` Python API) inside a labelled panel, so you can
+visually compare logos before making your choice. Your logo choice for that domain will then be cached and reused like in normal mode.
+
+#### See Interactive Mode in Action
+
+<br>
+
+> [!Note]
+> The horizontal scan lines visible in these recordings are an unfortunate side-effect from the screen recorder used and the gif conversion process — they don't appear on the actual terminal output. The braille art renders cleanly without artifacts.
+
+<br>
+
+<div align="center">
+
+**Interactive Logo Selection Example 1: Obsidian**
+
+<a href="https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/screen-recordings/interactive-selection-1.gif" target="_blank">
+<img src="https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/screen-recordings/interactive-selection-1.gif" alt="Interactive Logo Selection Example 1: Obsidian" width="700">
+</a>
+<p><em>The logos displayed above are trademarks or registered trademarks of their respective owners.<br>They are shown here for demonstration purposes only.</em></p>
+
+<br>
+
+**Interactive Logo Selection Example 2: GoDaddy**
+
+<a href="https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/screen-recordings/interactive-selection-2.gif" target="_blank">
+<img src="https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/screen-recordings/interactive-selection-2.gif" alt="Interactive Logo Selection Example 2: GoDaddy" width="700">
+</a>
+<p><em>The logos displayed above are trademarks or registered trademarks of their respective owners.<br>They are shown here for demonstration purposes only.</em></p>
+
+<br>
+
+**Interactive Logo Selection Example 3: Novo**
+
+<a href="https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/screen-recordings/interactive-selection-3.gif" target="_blank">
+<img src="https://raw.githubusercontent.com/divisionseven/brandbox/main/docs/assets/screen-recordings/interactive-selection-3.gif" alt="Interactive Logo Selection Example 3: Novo" width="700">
+</a>
+<p><em>The logos displayed above are trademarks or registered trademarks of their respective owners.<br>They are shown here for demonstration purposes only.</em></p>
+
+</div>
+
+#### How It Works:
 
 1. All 7 logo sources are fetched **in parallel** for each domain
-2. If **multiple logos** are found, they're rendered as braille art directly in
-   the terminal (via the `artty` library) — use the **arrow keys** to select
-   your preferred logo
-3. If **only one logo** is found, it auto-selects with an `[auto: only 1 source]`
-   message — no prompt needed
-4. The chosen logo is cached normally, so interactive mode only shows up for
-   domains with genuine choices
+2. If **multiple logos** are found, each is rendered as braille art inside a
+   Rich Panel with the source name in the title
+3. Use the **↑/↓ arrow keys** to highlight your choice and press **Enter** to
+   confirm
+4. If **only one logo** is found, it's auto-selected with an
+   `[auto: only 1 source]` label — no prompt needed
+5. If **no logos** are found, the contact is skipped silently and processing
+   continues
+6. The chosen logo is cached normally, so interactive mode only appears for
+   domains with genuine multi-source choices
 
 > [!Tip]
-> Combine with `--logo-provider` to see the source name (SimpleIcons, Hunter,
-> etc.) alongside each candidate during selection.
+> Combine with `--logo-provider` for a consistent experience: the source labels
+> in the interactive panels match the `[source]` tags shown in the progress
+> output during non-interactive runs.
 
-### Refresh all logos from scratch
+### Refresh All Logos from Scratch
 
 Clears the cached logo files and re-fetches everything on the next run:
 
@@ -244,7 +290,7 @@ Clears the cached logo files and re-fetches everything on the next run:
 brandbox --clear-cache --run
 ```
 
-### Reset processed-contact state
+### Reset Processed-Contact State
 
 Forces brandbox to re-evaluate every contact on the next run:
 
@@ -252,7 +298,7 @@ Forces brandbox to re-evaluate every contact on the next run:
 brandbox --reset-state --run
 ```
 
-### Show data directory
+### Show Data Directory
 
 ```bash
 brandbox --data-dir
@@ -260,29 +306,29 @@ brandbox --data-dir
 
 ---
 
-## Command Reference
+## Full Command Reference
 
 <details>
 <summary><b>Click to expand full command reference</b></summary>
 
-| Flag                                 | Description                                                |
-| ------------------------------------ | ---------------------------------------------------------- |
-| `--add-account`                      | Authenticate a new account                                 |
-| `--add-account --provider microsoft` | Authenticate a Microsoft 365 account                       |
-| `--add-account --provider google`    | Authenticate a Google / Workspace account                  |
-| `--list-accounts`                    | List all authenticated accounts                            |
-| `--run`                              | Inject logos for all accounts                              |
-| `--run --dry-run`                    | Preview without making changes                             |
-| `--run --overwrite`                  | Re-process contacts that already have logos                |
-| `--run --scan-inbox`                 | Also create contacts from recent senders (logo required)   |
-| `--run --logo-provider`              | Show logo source label (e.g. `[hunter]`) next to each logo |
-| `--run --interactive`                | Try all 7 sources in parallel and pick your preferred logo |
-| `--clear-cache`                      | Delete all cached logos (re-fetched on next `--run`)       |
-| `--reset-state`                      | Reset processed-contact state (re-evaluate all contacts)   |
-| `--data-dir`                         | Show the brandbox data directory path                      |
-| `--version` / `-V`                   | Print version number                                       |
+| Flag                                 | Description                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `--add-account`                      | Authenticate a new account                                                                       |
+| `--add-account --provider microsoft` | Authenticate a Microsoft 365 account                                                             |
+| `--add-account --provider google`    | Authenticate a Google / Workspace account                                                        |
+| `--list-accounts`                    | List all authenticated accounts                                                                  |
+| `--run`                              | Inject logos for all accounts                                                                    |
+| `--run --dry-run`                    | Preview without making changes                                                                   |
+| `--run --overwrite`                  | Re-process contacts that already have logos                                                      |
+| `--run --scan-inbox`                 | Also create contacts from recent senders (logo required)                                         |
+| `--run --logo-provider`              | Show logo source label (e.g. `[hunter]`) next to each logo                                       |
+| `--run --interactive`                | Try all 7 logo sources in parallel and visually pick your preferred logo from braille art panels |
+| `--clear-cache`                      | Delete all cached logos (re-fetched on next `--run`)                                             |
+| `--reset-state`                      | Reset processed-contact state (re-evaluate all contacts)                                         |
+| `--data-dir`                         | Show the brandbox data directory path                                                            |
+| `--version` / `-V`                   | Print version number                                                                             |
 
-### Environment variables
+### Environment Variables
 
 | Variable                      | Description                                       |
 | ----------------------------- | ------------------------------------------------- |
@@ -307,7 +353,7 @@ Outlook and Gmail cache contact photos and won't show updates until they reload:
 
 ## Data & Privacy
 
-### Logo APIs (no personal data)
+### Logo APIs (No Personal Data)
 
 When fetching company logos, BrandBox sends **only the company domain name** (e.g. `stripe.com`) to these services:
 
@@ -323,7 +369,7 @@ When fetching company logos, BrandBox sends **only the company domain name** (e.
 
 **No authentication tokens, no user identifiers, and no personal data are sent to any logo API.**
 
-### Provider APIs (your data, your account)
+### Provider APIs (Your Data, Your Account)
 
 All contact operations go through your authenticated provider account (Google or Microsoft 365) under your own OAuth token. No third party has access to this data.
 
@@ -342,7 +388,7 @@ All contact operations go through your authenticated provider account (Google or
 - **Google**: OAuth 2.0 browser flow via `InstalledAppFlow`. Tokens stored locally in `~/.local/share/brandbox/tokens/` and never shared with third parties.
 - **Microsoft**: MSAL device code flow. Tokens cached locally in the same directory.
 
-### Local storage
+### Local Storage
 
 All data is stored **locally on your machine** — **none of this data is ever transmitted**:
 
@@ -385,11 +431,11 @@ pytest tests/ -v
 
 ## Documentation
 
-| Document                                 | Description                                                                              |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [Microsoft 365 Setup](docs/microsoft.md) | How to configure Azure App Registration for Outlook contacts                             |
-| [Google Setup](docs/google.md)           | How to configure Google Cloud project for Gmail contacts                                 |
-| [How It Works](docs/how-it-works.md)     | Technical deep dive into the logo pipeline, contact discovery, and provider architecture |
+| Document                                   | Description                                                                              |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| [Microsoft 365 Setup][docs-microsoft-link] | How to configure Azure App Registration for Outlook contacts                             |
+| [Google Setup][docs-google-link]           | How to configure Google Cloud project for Gmail contacts                                 |
+| [How It Works][docs-how-it-works-link]     | Technical deep dive into the logo pipeline, contact discovery, and provider architecture |
 
 ## Contributing
 
@@ -430,8 +476,9 @@ Distributed under the [MIT License][license-link].
 [pypi-badge-link]: https://pypi.org/project/brandbox/
 
 <!-- Documentation Links -->
-[docs-google-link]: docs/google.md
-[docs-microsoft-link]: docs/microsoft.md
-[contributing-link]: CONTRIBUTING.md
-[security-docs-link]: .github/SECURITY.md
-[license-link]: LICENSE
+[docs-how-it-works-link]: https://github.com/divisionseven/brandbox/blob/main/docs/how-it-works.md
+[docs-google-link]: https://github.com/divisionseven/brandbox/blob/main/docs/google.md
+[docs-microsoft-link]: https://github.com/divisionseven/brandbox/blob/main/docs/microsoft.md
+[contributing-link]: https://github.com/divisionseven/brandbox/blob/main/CONTRIBUTING.md
+[security-docs-link]: https://github.com/divisionseven/brandbox/blob/main/.github/SECURITY.md
+[license-link]: https://github.com/divisionseven/brandbox/blob/main/LICENSE

@@ -90,7 +90,7 @@ def _print_banner() -> None:
         Panel(
             Text.from_markup(
                 f"[bold]brandbox[/bold]  [dim]v{__version__}[/dim]\n"
-                "[dim]Inject company logos into Outlook and Gmail contacts[/dim]"
+                "[dim]Add some branding to your inbox![/dim]"
             ),
             border_style="cyan",
             padding=(0, 2),
