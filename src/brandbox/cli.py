@@ -243,7 +243,7 @@ def _prepare_logo_for_braille(png_bytes: bytes) -> bytes:
     cropped_region = img.crop(bbox)
     total_lum = 0
     count = 0
-    for px in cropped_region.getdata():
+    for px in list(cropped_region.getdata()):
         r, g, b, a = px
         if a > 10:  # skip transparent pixels
             total_lum += 0.299 * r + 0.587 * g + 0.114 * b
@@ -363,7 +363,7 @@ def _show_logo_preview_and_select(
 
         console.print("")  # spacing
 
-        selected = questionary.select(
+        selected: LogoSrc | None = questionary.select(
             f"  Which logo for {domain}?",
             choices=choices,
             qmark="▶",
